@@ -1,0 +1,17 @@
+# Core (required)
+torch>=2.0
+numpy>=1.24
+pyyaml>=6.0
+
+# Environment (required for dtropd.env; mpe2 carries the PettingZoo MPE scenarios
+# after they were split out of pettingzoo>=1.25)
+pettingzoo>=1.24
+mpe2>=1.0
+gymnasium>=0.29
+
+# Plotting / analysis (Phase 6)
+matplotlib>=3.7
+# rliable>=1.2
+
+# Dev
+pytest>=7.0
