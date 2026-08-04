@@ -84,13 +84,22 @@ notebooks/D_TrOPD.ipynb
 
 * **12 agents, 3 targets.** A target counts as captured on a timestep only when
   **≥ 3 agents are simultaneously within `capture_radius`** of it.
-* **Reward** (shared by all agents, fully cooperative), per timestep:
+* **Reward**, per timestep, blended by `local_ratio` exactly as PettingZoo
+  MPE blends its local and global terms:
 
   ```
-  r = shaping_weight · Σ_k ( −mean distance of the 3 nearest agents to target k )
-    + capture_bonus  · #{captured targets}
-    − collision_penalty · #{colliding agent pairs}
+  global   = shaping_weight · Σ_k ( −mean distance of the 3 nearest agents to target k )
+           + capture_bonus  · #{captured targets}
+           − collision_penalty · #{colliding agent pairs}
+  local_i  = − shaping_weight · (distance from agent i to its nearest target)
+           − collision_penalty · #{collisions involving agent i}
+
+  r_i = (1 − local_ratio) · global + local_ratio · local_i
   ```
+
+  `local_ratio = 0` gives a pure shared team reward (identical for every
+  agent); the default `0.5` matches MPE's default. The capture bonus is always
+  global — that is the coordination signal. See "Judgment calls" below.
 
 * **Physics** are exactly PettingZoo MPE's `World.step` (semi-implicit
   integration, damping 0.25, soft-margin contact forces, `dt = 0.1`,
@@ -98,15 +107,43 @@ notebooks/D_TrOPD.ipynb
   live `mpe2` `World` to 1e-9 in the test suite.
 * **Actions** are `Box(-1, 1, (2,))` — an (x, y) force command, the natural
   codomain of a tanh-squashed policy.
-* **Observations** (48-dim for 12 agents / 3 targets): own velocity and
+* **Observations** (49-dim for 12 agents / 3 targets): own velocity and
   position, per-target relative position + visibility flag, per-other-agent
-  relative position + visibility flag, and two zone flags. Entities beyond the
-  observer's sensor range are zeroed and flagged invisible.
+  relative position + visibility flag, two zone flags, and the remaining
+  fraction of the episode. Entities beyond the observer's sensor range are
+  zeroed and flagged invisible.
 * **Heterogeneity zones** (`heterogeneous: true`): a high-friction zone scales
   an agent's velocity to 50% while it is inside, and a masked-observation zone
   shrinks its sensor range from 1.5 to 0.5.
 * **Episodes are fixed length** (`max_cycles`): they truncate, never terminate,
   so values are bootstrapped at the horizon.
+
+## Judgment calls
+
+SPEC.md is silent on three points that had to be decided to make Phase 2's
+acceptance test meaningful. Each is a config knob, each defaults to the
+learnable setting, and each can be reverted in one line.
+
+1. **`env.local_ratio` (default 0.5).** With a purely global team reward, one
+   agent out of twelve moves the shared return by ~1/9, and IPPO does not learn
+   within any budget we could run: over 60 epochs it stayed at the
+   random-policy level. MPE's own `simple_spread` blends a local and a global
+   term for exactly this reason, so we blend the same way. `local_ratio: 0.0`
+   restores the pure team reward.
+2. **Remaining-horizon feature in the observation.** Episodes are fixed length,
+   so the return from step *t* depends strongly on how many steps remain.
+   Without that feature in the observation the critic cannot predict its own
+   target and explained variance is capped near zero no matter how well it is
+   trained — which would make invariant I4's "explained variance rising" test
+   unpassable for reasons that have nothing to do with the critic.
+3. **`ppo.normalize_returns` (default true).** The critic learns
+   `(G − μ)/σ` with a running per-agent normaliser and every value it reports
+   is de-normalised back into reward units, so advantages, GAE, explained
+   variance and (later) the radius signal all see unmodified values. This one
+   change moved explained variance from ~0.14 to ~0.87 on the same run.
+
+Points 2 and 3 are optimisation fixes with no algorithmic content. Point 1
+changes the task, so it is called out here rather than buried in a default.
 
 ## Reproducibility
 
@@ -147,9 +184,22 @@ reasoned skips until Phase 3 rather than as an empty file. Enforced today:
 
 | Phase | Test | Result |
 |---|---|---|
-| 0 | `pytest` green; `python run.py --help` works | pass |
-| 1 | analytic Gaussian KL vs 1e6-sample MC within 1%; env random-policy rollout shapes + reward accounting | pass |
-| 2 | IPPO on the homogeneous env, 3 seeds, beats random by a clear margin, critic EV > 0.3 | pass |
+| 0 | `pytest` green; `python run.py --help` works | **pass** — 71 passed, 6 skipped (the skips are Phase 3 invariants) |
+| 1 | analytic Gaussian KL vs 1e6-sample MC within 1%; env random-policy rollout shapes + reward accounting | **pass** — max relative error 0.10% over three parameter pairs |
+| 2 | IPPO on the homogeneous env, 3 seeds, beats random by a clear margin, critic EV > 0.3 | **pass** — see below |
+
+Phase 2 numbers (150 epochs, 12 agents, 3 seeds, ~5 min/seed on one CPU core):
+
+| seed | final return | random return | improvement | margin (random SEMs) | max critic EV | captures/ep (vs random) |
+|---|---|---|---|---|---|---|
+| 0 | −23.06 | −60.58 | **+37.52** | 17.5 | **0.943** | 35.7 (2.9) |
+| 1 | −7.59 | −63.24 | **+55.65** | 21.8 | **0.941** | 59.9 (3.3) |
+| 2 | −24.01 | −62.23 | **+38.22** | 10.9 | **0.947** | 34.6 (2.4) |
+
+Mean final return −18.22 vs −62.02 random; mean improvement +43.80.
+
+![Phase 2 return](figures/phase2_return.png)
+![Phase 2 explained variance](figures/phase2_ev.png)
 
 Regenerate Phase 2:
 
