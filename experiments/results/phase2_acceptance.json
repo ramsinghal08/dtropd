@@ -1,0 +1,85 @@
+{
+  "acceptance": "Phase 2 -- IPPO learns on the homogeneous env",
+  "config": "/home/user/dtropd/experiments/configs/ippo_homogeneous.yaml",
+  "seeds": [
+    0,
+    1,
+    2
+  ],
+  "criteria": {
+    "C1_margin_in_random_sems": {
+      "threshold": 10.0,
+      "values": [
+        17.53667571380303,
+        21.809991697654947,
+        10.855777174447825
+      ],
+      "passed": true
+    },
+    "C2_all_seeds_improve": {
+      "values": [
+        37.524507504535464,
+        55.647481748835474,
+        38.22327699656855
+      ],
+      "passed": true
+    },
+    "C3_explained_variance": {
+      "threshold": 0.3,
+      "values": [
+        0.9433802449112898,
+        0.9405739596497158,
+        0.9466941661000722
+      ],
+      "passed": true
+    }
+  },
+  "passed": true,
+  "mean_final_return": -18.220006196966363,
+  "mean_random_return": -62.01842828027952,
+  "mean_improvement": 43.79842208331316,
+  "runs": [
+    {
+      "seed": 0,
+      "run_dir": "runs/phase2/seed0",
+      "final_return": -23.055076167005755,
+      "final_return_sem": 5.77677024897387,
+      "random_return": -60.57958367154122,
+      "random_return_sem": 2.1397731312896497,
+      "improvement": 37.524507504535464,
+      "max_explained_variance": 0.9433802449112898,
+      "final_explained_variance": 0.9275288086638813,
+      "final_captures": 35.6875,
+      "random_captures": 2.9375,
+      "wall_clock_seconds": 293.6410038471222
+    },
+    {
+      "seed": 1,
+      "run_dir": "runs/phase2/seed1",
+      "final_return": -7.594239773568784,
+      "final_return_sem": 6.025230653598099,
+      "random_return": -63.241721522404255,
+      "random_return_sem": 2.55146735130664,
+      "improvement": 55.647481748835474,
+      "max_explained_variance": 0.9405739596497158,
+      "final_explained_variance": 0.9202547538049397,
+      "final_captures": 59.875,
+      "random_captures": 3.3125,
+      "wall_clock_seconds": 296.5648708343506
+    },
+    {
+      "seed": 2,
+      "run_dir": "runs/phase2/seed2",
+      "final_return": -24.010702650324546,
+      "final_return_sem": 4.33266482774676,
+      "random_return": -62.2339796468931,
+      "random_return_sem": 3.5210078820094024,
+      "improvement": 38.22327699656855,
+      "max_explained_variance": 0.9466941661000722,
+      "final_explained_variance": 0.930686467881577,
+      "final_captures": 34.5625,
+      "random_captures": 2.4375,
+      "wall_clock_seconds": 299.83130526542664
+    }
+  ]
+}
