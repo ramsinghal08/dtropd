@@ -1,0 +1,52 @@
+# Phase 2 acceptance configuration: IPPO on the homogeneous cooperative-capture
+# environment (12 agents, 3 targets, capture requires 3 co-located agents).
+#
+# Acceptance (SPEC Sec. 5, Phase 2): mean return over 3 seeds beats a random
+# policy by a clear margin, and critic explained variance rises above 0.3.
+notes: "IPPO / homogeneous / Phase 2 acceptance"
+
+env:
+  n_agents: 12
+  n_targets: 3
+  capture_group_size: 3
+  capture_radius: 0.3
+  max_cycles: 50
+  heterogeneous: false
+  shaping_weight: 1.0
+  capture_bonus: 1.0
+  collision_penalty: 0.1
+  local_ratio: 0.5
+
+network:
+  hidden_sizes: [64, 64]
+  activation: tanh
+  log_std_init: -0.5
+
+ppo:
+  lr: 1.0e-3
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_ratio: 0.2
+  entropy_coef: 0.0
+  value_coef: 0.5
+  max_grad_norm: 0.5
+  inner_epochs: 4
+  num_minibatches: 4
+  kl_early_stop: 0.02
+
+distill:
+  enabled: false
+  kappa: 100.0
+
+graph:
+  topology: complete
+
+train:
+  algo: ippo
+  total_epochs: 150
+  num_envs: 40
+  seed: 0
+  device: cpu
+  eval_interval: 25
+  eval_episodes: 16
+  log_dir: runs/ippo_homogeneous

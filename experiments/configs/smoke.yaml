@@ -1,0 +1,35 @@
+# 2-agent CPU smoke configuration (SPEC Sec. 9, rule 6: always runnable, <2 min).
+notes: "CPU debug path: 2 agents, 1 target, tiny batches."
+
+env:
+  n_agents: 2
+  n_targets: 1
+  capture_group_size: 2
+  max_cycles: 25
+  heterogeneous: false
+
+network:
+  hidden_sizes: [32, 32]
+
+ppo:
+  lr: 3.0e-4
+  inner_epochs: 2
+  num_minibatches: 2
+  kl_early_stop: 0.02
+
+distill:
+  enabled: false
+  kappa: 100.0
+
+graph:
+  topology: complete
+
+train:
+  algo: ippo
+  total_epochs: 5
+  num_envs: 2
+  seed: 0
+  device: cpu
+  eval_interval: 0
+  eval_episodes: 4
+  log_dir: runs/smoke
