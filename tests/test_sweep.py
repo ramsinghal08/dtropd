@@ -177,6 +177,7 @@ def test_cross_version_figures_carry_the_label(tmp_path):
     the report open beside them, so the label has to survive onto the canvas
     rather than living only in ``report.json``.
     """
+    pytest.importorskip("matplotlib")
     from dtropd.plot import plot_comparison
 
     report = {

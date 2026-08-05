@@ -24,8 +24,14 @@ jobs:
       - name: Install dependencies (CPU-only torch)
         run: |
           python -m pip install --upgrade pip
+          # CPU wheel first; requirements.txt then sees torch>=2.0 satisfied and
+          # will not pull the much larger default (CUDA) build over it.
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install numpy pyyaml pytest pettingzoo mpe2 gymnasium
+          # Install from requirements.txt rather than a hand-written list. The
+          # list had drifted: it omitted matplotlib, so the only test of SPEC
+          # Sec. 7's "every figure regenerable by one command" -- Phase 6's E3
+          # criterion -- skipped silently on every CI run.
+          pip install -r requirements.txt
 
       - name: CLI smoke
         run: |
