@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dtropd"
+version = "0.1.0"
+description = "D-TrOPD: Decentralized Trust-Region Policy Distillation for networked multi-agent RL"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.0",
+    "numpy>=1.24",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+env = ["pettingzoo>=1.24", "mpe2>=1.0", "gymnasium>=0.29"]
+plot = ["matplotlib>=3.7", "rliable>=1.2"]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+dtropd = "dtropd.run:main"
+
+[tool.setuptools.packages.find]
+include = ["dtropd*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "slow: marks tests that take more than a few seconds",
+]
+filterwarnings = ["ignore::DeprecationWarning"]
