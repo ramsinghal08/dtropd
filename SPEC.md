@@ -673,40 +673,80 @@ Measurements, not decisions. Recorded here because they bear on how H7 should
 be read, and because the first of them was found by running the scale sweep
 rather than by reasoning about the design.
 
-### F-1 — The calibrated trust gate goes inert as `N` grows
+### F-1 — The calibrated trust gate goes inert as **degree** grows, not as `N` grows
 
-Measured on the H4 scale sweep (complete graph, 5 seeds per point, `w` and
-`D_ij` at end of run; `delta_base` from the D6 artifact for that environment):
+**This supersedes the first version of F-1, which attributed the effect to `N`.
+The H5 fixed-degree sweep refuted that reading, and the correction matters: it
+changes what would fix it.**
 
-| `N` | `delta_base` (measured at β=0) | operating `D_ij` p50 (β>0) | ratio | mean `w_ij` |
-|---|---|---|---|---|
-| 4 | 0.103 | 0.094 | 1.1x | 0.68 — active |
-| 8 | 0.090 | 0.036 | 2.5x | 0.89 |
-| 12 | 0.114 | 0.022 | 5.1x | 0.93 — **H7's scale** |
-| 24 | 0.082 | 0.011 | 7.5x | 0.95 — inert by the D1 threshold |
+Measured on the H4 scale sweep (complete graph, so degree = `N-1`), 5 seeds per
+point, `w` and `D_ij` at end of run; `delta_base` from the D6 artifact:
+
+| `N` | degree | `delta_base` (measured at β=0) | operating `D_ij` p50 (β>0) | ratio | mean `w_ij` |
+|---|---|---|---|---|---|
+| 4 | 3 | 0.103 | 0.094 | 1.1x | 0.68 — active |
+| 8 | 7 | 0.090 | 0.036 | 2.5x | 0.89 |
+| 12 | 11 | 0.114 | 0.022 | 5.1x | 0.93 — **H7's scale** |
+| 24 | 23 | 0.082 | 0.011 | 7.5x | 0.95 — inert by the D1 threshold |
+
+Read alone, that table says the gate dies as the system grows. The H5 sweep --
+identical in every respect except a **fixed** degree of 4 -- says otherwise:
+
+| `N` | degree | mean `w_ij` |
+|---|---|---|
+| 4 | 2 | 0.60 |
+| 8 | 4 | 0.78 |
+| 12 | 4 | 0.78 |
+| 24 | 4 | 0.67 |
+| 48 | 4 | 0.68 |
+
+At fixed degree the gate stays active out to `N = 48` and is **flat in `N`**.
+Sorting both sweeps by degree instead makes the relationship monotone and the
+confound obvious:
+
+| degree | 2 | 3 | 4 | 7 | 11 | 23 |
+|---|---|---|---|---|---|---|
+| mean `w_ij` | 0.60 | 0.68 | 0.67–0.78 | 0.89 | 0.93 | 0.95 |
+
+`N = 12` appears in both sweeps: `w = 0.78` at degree 4, `w = 0.93` at degree 11.
+Same size, same everything else, different gate.
 
 **Mechanism, and it is not a bug.** D1 requires the calibration to be taken
 with the gate *inactive*, so the window holds `β = 0` exactly. But the gate then
 operates under `β > 0`, and distillation is itself a force pulling neighbours
-together — so the `D_ij` distribution the gate meets in practice is compressed
-relative to the one it was fitted to. More neighbours means more pull, so the
-compression grows with `N`. Both D1 and D6 are being followed exactly; the
-finding is that following them yields a progressively weaker gate at scale.
+together — so the `D_ij` distribution the gate meets is compressed relative to
+the one it was fitted to. **Each neighbour is one more source of pull**, so the
+compression scales with the number of neighbours an agent averages over, which
+is degree. `N` only appeared to drive it because the H4 sweep uses a complete
+graph, where degree and `N` move together. Both D1 and D6 are being followed
+exactly; the finding is that following them yields a weak gate in
+densely-connected topologies.
 
-**Why it matters for H7.** At `N = 12` the gate attenuates about 7%. D-TrOPD is
-then behaviourally close to NaiveDistill, which is the comparison H7's headline
-rests on. A null result at `N = 12` would therefore be ambiguous between "the
-trust gate does not help" and "the trust gate was barely switched on", and those
-are very different conclusions. The D7 sensitivity grid is the right instrument
-for this: it varies `delta_base`, and this measurement says the range that
-produces an active gate at `N = 12` sits well below what D6's procedure returns.
+**Why it matters for H7.** H7 specifies `topology: complete` at `N = 12`, i.e.
+degree 11, where the gate attenuates about 7%. D-TrOPD is then behaviourally
+close to NaiveDistill — the comparison H7's headline rests on. A null result
+would be ambiguous between "the trust gate does not help" and "the trust gate
+was barely switched on", and those are very different conclusions. Note the
+implication of the correction: this is a property of H7's **topology choice**,
+not of its size, and the same `N = 12` at degree 4 gives an active gate
+(`w = 0.78`).
 
 **What is deliberately NOT changed.** D5 fixes adaptive `delta_base` as an
-ablation arm and never the default, and D6 fixes the calibration rule. Neither
-is touched here. Re-fitting the calibration after seeing that it produces a weak
-gate would be choosing a hyperparameter against an outcome, which is the thing
-the pre-registration exists to prevent. This is recorded as a measurement and
-left for an explicit decision.
+ablation arm and never the default; D6 fixes the calibration rule; D2 and the
+H7 config fix the topology. None is touched here. Re-fitting the calibration —
+or quietly switching H7's topology — after seeing that the gate comes out weak
+would be selecting a condition against an outcome, which is the thing the
+pre-registration exists to prevent. Recorded as a measurement, left for an
+explicit decision.
+
+**How this was gotten wrong first.** The initial version of F-1 read the H4
+sweep alone and attributed the effect to `N`. That reading survived because H4's
+complete graph confounds degree with `N` perfectly, and it was only refuted when
+the H5 fixed-degree sweep — which was run for a different hypothesis entirely —
+produced a flat `w` out to `N = 48`. The correction is recorded rather than
+silently rewritten because the two versions imply different remedies: the first
+suggests the method does not scale, the second suggests it is sensitive to how
+densely the graph is wired.
 
 ### F-2 — `N = 48` fixed-degree fits; the D15 asymmetry is vindicated
 
