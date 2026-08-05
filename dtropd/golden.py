@@ -1,0 +1,284 @@
+"""Cross-machine comparison of a training curve against a stored golden reference.
+
+This is the single definition of "does IPPO still behave as it did at Phase 2".
+It lives in the package rather than in ``tests/`` because two callers need it --
+``tests/test_baselines.py`` and ``experiments/phase4_acceptance.py`` -- and when
+the rule was written out twice, one copy was fixed and the other was not.
+
+Why a tolerance at all
+----------------------
+
+The reference was generated on a different machine. Floating-point addition is
+not associative, so a different BLAS build reorders reductions and changes the
+last few bits of every dot product. Training is chaotic, so those last bits
+amplify: on CI the observed disagreement was ~1e-8 of a curve's dynamic range at
+epoch 0, growing by roughly two orders of magnitude over twelve epochs. Nothing
+about the *behaviour* differs. Asserting exact equality was a bug -- it asserted
+a property achievable only on the machine that produced the reference.
+
+Why deviations are normalised by *dynamic range*
+------------------------------------------------
+
+The obvious repair -- relative error, ``|a-e|/|e|`` -- is also wrong, and failed
+for a second time in CI on ``explained_variance``. An untrained critic explains
+almost nothing, so that curve *starts at* -0.0099 and rises to 0.58: it passes
+through zero by construction. Dividing a round-off difference of 6.2e-9 by a
+value that is 1.7% of the curve's own range manufactured a 6.3e-7 "relative
+error" out of the same round-off that read as 1.7e-9 on the return curve. The
+pointwise value is simply the wrong denominator for a metric that crosses zero.
+
+So deviations are measured as a fraction of the curve's own dynamic range,
+``max(e) - min(e)``. That is scale-free, finite through zero crossings, and is
+the quantity actually of interest: *did this metric move, relative to how much it
+moves over the run at all?* Under that normalisation the round-off observed on CI
+was ~1e-8 of range at epoch 0 for **both** metrics -- the same number, which is
+the sign that the normalisation matches the physics.
+
+What each tier detects
+----------------------
+
+* **Epoch 0**, to :data:`FIRST_EPOCH_TOL` (1e-6 of range). This is the sharp
+  assertion and the one doing the real work: a single update from bit-identical
+  initial weights, before chaos has anything to amplify. A genuine change to the
+  update math moves it by O(1e-3) of range or more -- a thousandfold over the
+  threshold -- while the observed cross-machine round-off sits a hundredfold
+  under it.
+* **The whole curve**, to :data:`CURVE_TOL` (1e-2 of range). Deliberately loose:
+  chaotic amplification is exponential, so no tight bound on later epochs is
+  defensible, and pretending otherwise just buys another red build. What this
+  tier catches is gross divergence -- IPPO plateauing somewhere else, or a bug in
+  a code path that only runs after the first epoch -- which is O(1) of range,
+  a hundredfold over the threshold.
+
+Step-valued metrics
+-------------------
+
+Some of these metrics are not continuous at all. ``inner_epochs_used`` is a
+*count* -- how many inner epochs ran before the KL early-stop tripped, averaged
+over agents -- and ``clip_fraction`` is the fraction of samples the PPO ratio
+clipped. Their response to round-off is a step function, not a smooth drift: a
+borderline comparison decides the other way and the value jumps by one whole
+step. For ``inner_epochs_used`` that step is ``1/6`` on the reference config,
+which is 100% of that curve's range; for ``clip_fraction`` it is ``1/4800``,
+which is 0.6% of its range and still thousands of times the epoch-0 tolerance.
+No tolerance on a continuous scale can both accept a single flipped decision and
+mean anything.
+
+Such curves are therefore compared in their own units: at most
+:data:`MAX_FLIPPED_DECISIONS` flipped decision per epoch. That is a weaker
+assertion than for the smooth curves and it is the strongest true one available
+-- a real change to the update math flips these decisions in bulk, not one at a
+time.
+
+Which curves are step-valued is **inferred**, by :func:`infer_step`, rather than
+listed. Twice now this comparison has reddened CI because a metric was assumed
+smooth and was not, so the classification should not depend on remembering to
+add a name to a list. A count-fraction takes values ``k/N`` for integer ``k``, so
+the smallest ``N`` that renders every reference value integral recovers the
+granularity directly from the stored curve, with no config plumbing and nothing
+to keep in sync. :data:`STEP_VALUED_KEYS` records the keys already known to be
+discrete, and a test asserts the inference still finds them.
+
+The genuinely bitwise guarantees live elsewhere and are untouched by any of this:
+``test_beta_zero_reproduces_ippo_bitwise`` and
+``test_algorithms_are_deterministic_under_a_seed`` compare runs in the *same*
+process, where exactness is both achievable and meaningful. This module is for
+the cross-machine, cross-time comparison, which is the only place a tolerance
+belongs.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Sequence
+
+import numpy as np
+
+__all__ = [
+    "FIRST_EPOCH_TOL",
+    "CURVE_TOL",
+    "STEP_VALUED_KEYS",
+    "MAX_FLIPPED_DECISIONS",
+    "MAX_DENOMINATOR",
+    "CurveVerdict",
+    "infer_step",
+    "compare_curve",
+]
+
+#: Epoch-0 tolerance, as a fraction of the curve's dynamic range.
+FIRST_EPOCH_TOL = 1e-6
+#: Whole-curve tolerance, as a fraction of the curve's dynamic range.
+CURVE_TOL = 1e-2
+#: Keys known to be counts rather than continuous quantities. Not the mechanism
+#: -- :func:`infer_step` is -- but a test asserts the inference still finds these.
+STEP_VALUED_KEYS = ("inner_epochs_used", "clip_fraction")
+#: How many flipped threshold decisions per epoch are attributable to round-off.
+MAX_FLIPPED_DECISIONS = 1
+#: Largest denominator :func:`infer_step` will consider. Above this, the sample
+#: count is fine enough that a single flip is lost in the smooth tolerance anyway.
+MAX_DENOMINATOR = 100_000
+
+
+@dataclass
+class CurveVerdict:
+    """The outcome of comparing one metric's curve against the reference."""
+
+    key: str
+    kind: str  # "smooth" | "step"
+    ok: bool
+    reason: str = ""
+    scale: float = float("nan")
+    first_epoch_deviation: float = float("nan")
+    max_deviation: float = float("nan")
+    max_deviation_epoch: int = -1
+    tolerances: dict[str, float] = field(default_factory=dict)
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "kind": self.kind,
+            "ok": self.ok,
+            "reason": self.reason,
+            "scale": self.scale,
+            "first_epoch_deviation": self.first_epoch_deviation,
+            "max_deviation": self.max_deviation,
+            "max_deviation_epoch": self.max_deviation_epoch,
+            "tolerances": self.tolerances,
+        }
+
+
+#: Relative error the stored metrics themselves carry, from float32 accumulation
+#: inside the training loop. ``clip_fraction`` is exactly ``223/4800`` but is
+#: stored as 0.046458332954595484, which is ``222.999998/4800``.
+ACCUMULATION_EPS = 1e-7
+#: An inferred granularity is only believed while the tolerance it needs stays
+#: this tight; past that, a count is indistinguishable from a continuous value
+#: and claiming otherwise would match noise.
+MAX_DISCRIMINATING_TOL = 1e-2
+
+
+def infer_step(
+    expected: Sequence[float],
+    max_denominator: int = MAX_DENOMINATOR,
+) -> float | None:
+    """Recover a count-fraction's granularity from the reference curve itself.
+
+    A metric averaged over a fixed number ``N`` of discrete decisions takes only
+    the values ``k/N``. Returns ``1/N`` for the smallest such ``N``, or ``None``
+    if the curve is continuous.
+
+    The comparison cannot use a fixed absolute tolerance on ``v*N``: the stored
+    values carry :data:`ACCUMULATION_EPS` of relative error from float32
+    accumulation, which ``v*N`` multiplies up. The tolerance therefore grows with
+    ``N`` -- and the scan stops once it exceeds
+    :data:`MAX_DISCRIMINATING_TOL`, because a tolerance that loose accepts
+    anything and would start reporting continuous curves as counts.
+
+    False positives are negligible while the scan runs: a continuous value lands
+    within ``tol`` of a multiple of ``1/N`` with probability ``~2*tol <= 0.02``,
+    and all of the curve's points must do so at once.
+    """
+    e = np.asarray(list(expected), dtype=np.float64)
+    if e.size == 0 or not np.all(np.isfinite(e)):
+        return None
+    magnitude = float(np.max(np.abs(e)))
+    for n in range(1, max_denominator + 1):
+        tol = max(1e-9, n * magnitude * ACCUMULATION_EPS)
+        if tol > MAX_DISCRIMINATING_TOL:
+            return None
+        scaled = e * n
+        if np.all(np.abs(scaled - np.round(scaled)) <= tol):
+            return 1.0 / n
+    return None
+
+
+def _dynamic_range(e: np.ndarray) -> float:
+    """The curve's own scale. Falls back sensibly for a constant curve."""
+    span = float(np.max(e) - np.min(e))
+    if span > 0.0:
+        return span
+    magnitude = float(np.max(np.abs(e)))
+    return magnitude if magnitude > 0.0 else 1.0
+
+
+def compare_curve(
+    key: str,
+    actual: Sequence[float],
+    expected: Sequence[float],
+    *,
+    granularity: float | None = None,
+    first_epoch_tol: float = FIRST_EPOCH_TOL,
+    curve_tol: float = CURVE_TOL,
+    max_flipped: int = MAX_FLIPPED_DECISIONS,
+) -> CurveVerdict:
+    """Compare one metric's curve against the stored reference.
+
+    Whether the curve is step-valued is inferred from the reference (see
+    :func:`infer_step`). Pass ``granularity`` to override that inference; passing
+    it for a curve that is continuous has no effect.
+    """
+    a = np.asarray(list(actual), dtype=np.float64)
+    e = np.asarray(list(expected), dtype=np.float64)
+    if a.shape != e.shape:
+        return CurveVerdict(
+            key=key,
+            kind="smooth",
+            ok=False,
+            reason=f"{key}: got {a.size} epochs, reference has {e.size} epochs",
+        )
+
+    step = granularity if granularity and granularity > 0.0 else infer_step(e)
+    if step is not None:
+        # Compared in units of one flipped threshold decision, not on a
+        # continuous scale -- see the module docstring.
+        steps = np.abs(a - e) / step
+        worst = float(steps.max())
+        verdict = CurveVerdict(
+            key=key,
+            kind="step",
+            ok=worst <= max_flipped + 1e-6,
+            scale=float(step),
+            first_epoch_deviation=float(steps[0]),
+            max_deviation=worst,
+            max_deviation_epoch=int(steps.argmax()),
+            tolerances={"max_flipped_decisions": float(max_flipped)},
+        )
+        if not verdict.ok:
+            verdict.reason = (
+                f"IPPO's {key} diverged from the Phase 2 reference: {worst:.3g} "
+                f"flipped decisions (steps of {step:.6g}) at epoch "
+                f"{verdict.max_deviation_epoch}, more than the {max_flipped} "
+                f"attributable to round-off tipping a single borderline "
+                f"comparison.\n  reference: {list(e)}\n  current:   {list(a)}"
+            )
+        return verdict
+
+    scale = _dynamic_range(e)
+    dev = np.abs(a - e) / scale
+    verdict = CurveVerdict(
+        key=key,
+        kind="smooth",
+        ok=True,
+        scale=scale,
+        first_epoch_deviation=float(dev[0]),
+        max_deviation=float(dev.max()),
+        max_deviation_epoch=int(dev.argmax()),
+        tolerances={"first_epoch": first_epoch_tol, "curve": curve_tol},
+    )
+    if verdict.first_epoch_deviation > first_epoch_tol:
+        verdict.ok = False
+        verdict.reason = (
+            f"IPPO's {key} changed since Phase 2 at the FIRST epoch: deviation "
+            f"{verdict.first_epoch_deviation:.3g} of the curve's dynamic range "
+            f"({scale:.4g}) exceeds {first_epoch_tol:g}. One update from identical "
+            f"initial weights should not move at this magnitude unless the update "
+            f"math changed.\n  reference[0]: {e[0]!r}\n  current[0]:   {a[0]!r}"
+        )
+    elif verdict.max_deviation > curve_tol:
+        verdict.ok = False
+        verdict.reason = (
+            f"IPPO's {key} curve diverged from the Phase 2 reference: max deviation "
+            f"{verdict.max_deviation:.3g} of the curve's dynamic range ({scale:.4g}) "
+            f"at epoch {verdict.max_deviation_epoch} exceeds {curve_tol:g}.\n"
+            f"  reference: {list(e)}\n  current:   {list(a)}"
+        )
+    return verdict

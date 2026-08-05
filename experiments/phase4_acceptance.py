@@ -47,6 +47,7 @@ import torch
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from dtropd import golden  # noqa: E402
 from dtropd.algorithms import build_algorithm  # noqa: E402
 from dtropd.config import Config  # noqa: E402
 from dtropd.train import train  # noqa: E402
@@ -175,35 +176,33 @@ def check_ippo_regression() -> dict[str, Any]:
         metrics = algo.update()
         history.append({**rollout, **metrics})
 
-    # Exact equality is not the right assertion across machines: floating-point
-    # addition is not associative, so a different BLAS build reorders reductions
-    # and training amplifies the round-off chaotically. A change in the update
-    # *math* shows up at the first epoch, before chaos has anything to amplify.
-    # See tests/test_baselines.py::compare_to_reference_curve.
-    FIRST_EPOCH_RTOL, CURVE_RTOL = 1e-7, 1e-3
-    mismatches: dict[str, Any] = {}
-    worst_rel, worst_first = 0.0, 0.0
+    # Exact equality is not the right assertion across machines, and neither is
+    # pointwise relative error for a metric that crosses zero. The rule -- and
+    # the reasoning -- live in dtropd.golden, shared with tests/test_baselines.py
+    # so there is exactly one definition of it.
+    verdicts: dict[str, Any] = {}
+    worst_dev, worst_first = 0.0, 0.0
     for key, expected in reference["curve"].items():
         actual = [history[i][key] for i in range(len(expected))]
-        e = np.asarray(expected, dtype=np.float64)
-        a = np.asarray(actual, dtype=np.float64)
-        rel = np.abs(a - e) / np.maximum(np.abs(e), 1e-12)
-        worst_rel = max(worst_rel, float(rel.max()))
-        worst_first = max(worst_first, float(rel[0]))
-        if rel[0] > FIRST_EPOCH_RTOL or rel.max() > CURVE_RTOL:
-            mismatches[key] = {
-                "first_epoch_rel": float(rel[0]),
-                "max_rel": float(rel.max()),
-                "max_rel_epoch": int(rel.argmax()),
-            }
+        verdict = golden.compare_curve(key, actual, expected)
+        verdicts[key] = verdict
+        if verdict.kind == "smooth":
+            worst_dev = max(worst_dev, verdict.max_deviation)
+            worst_first = max(worst_first, verdict.first_epoch_deviation)
+    mismatches = {k: v.as_dict() for k, v in verdicts.items() if not v.ok}
     return {
         "reference": str(path.relative_to(ROOT)),
         "generated_on_commit": "011de8f (Phase 2, pre-refactor)",
         "metrics_compared": sorted(reference["curve"]),
-        "first_epoch_rtol": FIRST_EPOCH_RTOL,
-        "curve_rtol": CURVE_RTOL,
-        "max_first_epoch_rel_deviation": worst_first,
-        "max_rel_deviation": worst_rel,
+        "deviation_units": (
+            "fraction of each curve's dynamic range; for count-valued metrics, "
+            "flipped threshold decisions"
+        ),
+        "first_epoch_tol": golden.FIRST_EPOCH_TOL,
+        "curve_tol": golden.CURVE_TOL,
+        "step_valued_keys": list(golden.STEP_VALUED_KEYS),
+        "max_first_epoch_deviation": worst_first,
+        "max_deviation": worst_dev,
         "mismatched_metrics": sorted(mismatches),
         "detail": mismatches,
         "passed": not mismatches,
