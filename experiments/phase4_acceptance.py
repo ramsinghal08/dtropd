@@ -195,11 +195,10 @@ def check_ippo_regression() -> dict[str, Any]:
         "generated_on_commit": "011de8f (Phase 2, pre-refactor)",
         "metrics_compared": sorted(reference["curve"]),
         "deviation_units": (
-            "fraction of each curve's dynamic range; for count-valued metrics, "
-            "flipped threshold decisions"
+            "absolute; for count-valued metrics, flipped threshold decisions"
         ),
-        "first_epoch_tol": golden.FIRST_EPOCH_TOL,
-        "curve_tol": golden.CURVE_TOL,
+        "first_epoch_tol": f"{golden.FIRST_EPOCH_ATOL:g} + {golden.FIRST_EPOCH_RANGE_TOL:g} x range",
+        "curve_tol": f"{golden.CURVE_ATOL:g} + {golden.CURVE_RANGE_TOL:g} x range",
         "step_valued_keys": list(golden.STEP_VALUED_KEYS),
         "max_first_epoch_deviation": worst_first,
         "max_deviation": worst_dev,
