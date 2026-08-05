@@ -16,39 +16,58 @@ epoch 0, growing by roughly two orders of magnitude over twelve epochs. Nothing
 about the *behaviour* differs. Asserting exact equality was a bug -- it asserted
 a property achievable only on the machine that produced the reference.
 
-Why deviations are normalised by *dynamic range*
-------------------------------------------------
+Why the noise floor is *absolute*
+---------------------------------
 
-The obvious repair -- relative error, ``|a-e|/|e|`` -- is also wrong, and failed
-for a second time in CI on ``explained_variance``. An untrained critic explains
-almost nothing, so that curve *starts at* -0.0099 and rises to 0.58: it passes
-through zero by construction. Dividing a round-off difference of 6.2e-9 by a
+Two repairs failed before this one, each because it assumed the round-off scales
+with something it does not.
+
+*Relative error*, ``|a-e|/|e|``, reddened CI on ``explained_variance``. An
+untrained critic explains nothing, so that curve *starts at* -0.0099 and rises to
+0.58: it passes through zero by construction. Dividing a 6.2e-9 round-off by a
 value that is 1.7% of the curve's own range manufactured a 6.3e-7 "relative
-error" out of the same round-off that read as 1.7e-9 on the return curve. The
-pointwise value is simply the wrong denominator for a metric that crosses zero.
+error" out of the same round-off that read as 1.7e-9 on the return curve.
 
-So deviations are measured as a fraction of the curve's own dynamic range,
-``max(e) - min(e)``. That is scale-free, finite through zero crossings, and is
-the quantity actually of interest: *did this metric move, relative to how much it
-moves over the run at all?* Under that normalisation the round-off observed on CI
-was ~1e-8 of range at epoch 0 for **both** metrics -- the same number, which is
-the sign that the normalisation matches the physics.
+*Fraction of dynamic range* then reddened CI on ``update_kl``, whose absolute
+deviation was 8.9e-9 -- the same round-off again -- but whose range is only
+0.0062, so the normalisation inflated it to 1.4e-6 of range.
+
+The three deviations CI actually produced say what the right scale is::
+
+    episode_return_mean   4.9e-8 absolute   (magnitude 28)
+    explained_variance    6.2e-9 absolute   (magnitude 0.0099 at epoch 0)
+    update_kl             8.9e-9 absolute   (magnitude 0.0091)
+
+Three metrics whose magnitudes span three orders of magnitude, and whose
+round-off is the same ~1e-8 in absolute terms. That is what should be expected:
+all of them are built from O(1) intermediates -- log-probs, values, normalised
+advantages -- so BLAS reduction order perturbs them at a fixed absolute scale
+regardless of how large the reported statistic happens to be. ``update_kl``
+looks noisy only because it is an O(0.01) *difference* of O(1) quantities, and
+the cancellation amplifies its relative error by ~100x without changing its
+absolute error at all.
+
+So the tolerance is ``atol + rtol * range``: an absolute floor that covers the
+common noise scale, plus a proportional term giving large-magnitude curves
+headroom in case their round-off does scale with magnitude on some other build.
 
 What each tier detects
 ----------------------
 
-* **Epoch 0**, to :data:`FIRST_EPOCH_TOL` (1e-6 of range). This is the sharp
-  assertion and the one doing the real work: a single update from bit-identical
-  initial weights, before chaos has anything to amplify. A genuine change to the
-  update math moves it by O(1e-3) of range or more -- a thousandfold over the
-  threshold -- while the observed cross-machine round-off sits a hundredfold
-  under it.
-* **The whole curve**, to :data:`CURVE_TOL` (1e-2 of range). Deliberately loose:
-  chaotic amplification is exponential, so no tight bound on later epochs is
-  defensible, and pretending otherwise just buys another red build. What this
-  tier catches is gross divergence -- IPPO plateauing somewhere else, or a bug in
-  a code path that only runs after the first epoch -- which is O(1) of range,
-  a hundredfold over the threshold.
+* **Epoch 0**, to ``FIRST_EPOCH_ATOL + FIRST_EPOCH_RANGE_TOL * range``
+  (1e-6 + 1e-5 x range). This is the sharp assertion and the one doing the real
+  work: a single update from bit-identical initial weights, before chaos has
+  anything to amplify. It clears the worst observed round-off by ~20x and sits
+  100x or more below a 1%-of-magnitude change on *every* metric in the
+  reference -- which ``test_first_epoch_tolerance_still_detects_a_real_change``
+  checks mechanically for each key rather than asserting in prose here.
+* **The whole curve**, to ``CURVE_ATOL + CURVE_RANGE_TOL * range``
+  (1e-4 + 1e-2 x range). Deliberately loose: chaotic amplification is
+  exponential, so no tight bound on later epochs is defensible, and pretending
+  otherwise just buys another red build. What this tier catches is gross
+  divergence -- IPPO plateauing somewhere else, or a bug in a code path that only
+  runs after the first epoch -- which is O(1) of range, a hundredfold over the
+  threshold.
 
 Step-valued metrics
 -------------------
@@ -95,8 +114,10 @@ from typing import Sequence
 import numpy as np
 
 __all__ = [
-    "FIRST_EPOCH_TOL",
-    "CURVE_TOL",
+    "FIRST_EPOCH_ATOL",
+    "FIRST_EPOCH_RANGE_TOL",
+    "CURVE_ATOL",
+    "CURVE_RANGE_TOL",
     "STEP_VALUED_KEYS",
     "MAX_FLIPPED_DECISIONS",
     "MAX_DENOMINATOR",
@@ -105,10 +126,14 @@ __all__ = [
     "compare_curve",
 ]
 
-#: Epoch-0 tolerance, as a fraction of the curve's dynamic range.
-FIRST_EPOCH_TOL = 1e-6
-#: Whole-curve tolerance, as a fraction of the curve's dynamic range.
-CURVE_TOL = 1e-2
+#: Epoch-0 tolerance: absolute floor, ~20x the worst round-off CI has produced.
+FIRST_EPOCH_ATOL = 1e-6
+#: Epoch-0 tolerance: proportional term, in case round-off scales with magnitude.
+FIRST_EPOCH_RANGE_TOL = 1e-5
+#: Whole-curve tolerance: absolute floor, for curves with a very small range.
+CURVE_ATOL = 1e-4
+#: Whole-curve tolerance: proportional term bounding chaotic amplification.
+CURVE_RANGE_TOL = 1e-2
 #: Keys known to be counts rather than continuous quantities. Not the mechanism
 #: -- :func:`infer_step` is -- but a test asserts the inference still finds these.
 STEP_VALUED_KEYS = ("inner_epochs_used", "clip_fraction")
@@ -206,8 +231,10 @@ def compare_curve(
     expected: Sequence[float],
     *,
     granularity: float | None = None,
-    first_epoch_tol: float = FIRST_EPOCH_TOL,
-    curve_tol: float = CURVE_TOL,
+    first_epoch_atol: float = FIRST_EPOCH_ATOL,
+    first_epoch_range_tol: float = FIRST_EPOCH_RANGE_TOL,
+    curve_atol: float = CURVE_ATOL,
+    curve_range_tol: float = CURVE_RANGE_TOL,
     max_flipped: int = MAX_FLIPPED_DECISIONS,
 ) -> CurveVerdict:
     """Compare one metric's curve against the stored reference.
@@ -252,8 +279,13 @@ def compare_curve(
             )
         return verdict
 
+    # Absolute deviations, against an absolute floor plus a proportional term.
+    # The floor is what matters: the round-off is ~1e-8 whatever the metric's
+    # magnitude, because all of these are built from O(1) intermediates.
     scale = _dynamic_range(e)
-    dev = np.abs(a - e) / scale
+    dev = np.abs(a - e)
+    first_tol = first_epoch_atol + first_epoch_range_tol * scale
+    curve_tol = curve_atol + curve_range_tol * scale
     verdict = CurveVerdict(
         key=key,
         kind="smooth",
@@ -262,23 +294,25 @@ def compare_curve(
         first_epoch_deviation=float(dev[0]),
         max_deviation=float(dev.max()),
         max_deviation_epoch=int(dev.argmax()),
-        tolerances={"first_epoch": first_epoch_tol, "curve": curve_tol},
+        tolerances={"first_epoch": first_tol, "curve": curve_tol},
     )
-    if verdict.first_epoch_deviation > first_epoch_tol:
+    if verdict.first_epoch_deviation > first_tol:
         verdict.ok = False
         verdict.reason = (
-            f"IPPO's {key} changed since Phase 2 at the FIRST epoch: deviation "
-            f"{verdict.first_epoch_deviation:.3g} of the curve's dynamic range "
-            f"({scale:.4g}) exceeds {first_epoch_tol:g}. One update from identical "
-            f"initial weights should not move at this magnitude unless the update "
-            f"math changed.\n  reference[0]: {e[0]!r}\n  current[0]:   {a[0]!r}"
+            f"IPPO's {key} changed since Phase 2 at the FIRST epoch: absolute "
+            f"deviation {verdict.first_epoch_deviation:.3g} exceeds {first_tol:.3g} "
+            f"({first_epoch_atol:g} + {first_epoch_range_tol:g} x range {scale:.4g}). "
+            f"One update from identical initial weights should not move at this "
+            f"magnitude unless the update math changed.\n"
+            f"  reference[0]: {e[0]!r}\n  current[0]:   {a[0]!r}"
         )
     elif verdict.max_deviation > curve_tol:
         verdict.ok = False
         verdict.reason = (
-            f"IPPO's {key} curve diverged from the Phase 2 reference: max deviation "
-            f"{verdict.max_deviation:.3g} of the curve's dynamic range ({scale:.4g}) "
-            f"at epoch {verdict.max_deviation_epoch} exceeds {curve_tol:g}.\n"
+            f"IPPO's {key} curve diverged from the Phase 2 reference: max absolute "
+            f"deviation {verdict.max_deviation:.3g} at epoch "
+            f"{verdict.max_deviation_epoch} exceeds {curve_tol:.3g} "
+            f"({curve_atol:g} + {curve_range_tol:g} x range {scale:.4g}).\n"
             f"  reference: {list(e)}\n  current:   {list(a)}"
         )
     return verdict

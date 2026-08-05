@@ -38,10 +38,17 @@ REFERENCE = Path(__file__).resolve().parent / "data" / "ippo_phase2_reference.js
 ALL_ALGOS = ("ippo", "mappo", "happo", "naive_distill", "dtropd")
 
 #: Tolerances for the cross-machine golden-curve comparison live in
-#: ``dtropd.golden``, which explains at length why exact equality -- and then
-#: pointwise relative error -- were both the wrong assertion.
-FIRST_EPOCH_TOL = golden.FIRST_EPOCH_TOL
-CURVE_TOL = golden.CURVE_TOL
+#: ``dtropd.golden``, which explains at length why exact equality, then pointwise
+#: relative error, then fraction-of-dynamic-range were each the wrong assertion.
+#:
+#: The absolute deviations CI actually produced at epoch 0, which the tolerance
+#: must accept. Three metrics whose magnitudes span three orders of magnitude,
+#: and whose round-off is the same ~1e-8: the noise floor is absolute.
+CI_OBSERVED_FIRST_EPOCH_DEVIATION = {
+    "episode_return_mean": 4.942e-8,
+    "explained_variance": 6.205e-9,
+    "update_kl": 8.925e-9,
+}
 
 
 def baseline_config(algo: str, n_agents: int = 4) -> Config:
@@ -197,39 +204,52 @@ def test_reference_comparison_rejects_a_real_change_and_tolerates_round_off():
         compare_to_reference_curve(e[:-1], expected, "episode_return_mean")
 
 
-def test_reference_comparison_survives_a_metric_that_crosses_zero():
-    """Regression: pointwise *relative* error is wrong for a zero-crossing curve.
+@pytest.mark.parametrize("key,deviation", sorted(CI_OBSERVED_FIRST_EPOCH_DEVIATION.items()))
+def test_tolerance_accepts_the_round_off_ci_actually_produced(key, deviation):
+    """Regression for three red builds, using the numbers from each of them.
 
     ``explained_variance`` starts at -0.0099 (an untrained critic explains
-    nothing) and rises to 0.58, so its first value is 1.7% of its own range.
-    Dividing by it turned a 6.2e-9 round-off difference -- the same round-off
-    that read as 1.7e-9 on the return curve -- into a 6.3e-7 "relative error"
-    and reddened CI a second time. The numbers below are the ones CI actually
-    produced.
+    nothing) and rises to 0.58, so pointwise relative error inflated its 6.2e-9
+    round-off into 6.3e-7. ``update_kl`` is an O(0.01) difference of O(1)
+    log-probs with a dynamic range of 0.0062, so fraction-of-range inflated its
+    8.9e-9 into 1.4e-6. Both are the same absolute round-off as the return
+    curve's 4.9e-8, on metrics 3000x smaller.
     """
-    expected = json.loads(REFERENCE.read_text())["curve"]["explained_variance"]
+    expected = json.loads(REFERENCE.read_text())["curve"][key]
     e = np.asarray(expected, dtype=np.float64)
-    assert abs(e[0]) / (e.max() - e.min()) < 0.02, (
-        "this test is only meaningful while the reference curve still starts "
-        "near zero relative to its range"
+
+    verdict = compare_to_reference_curve(e + deviation, expected, key)
+    assert verdict.first_epoch_deviation <= verdict.tolerances["first_epoch"] / 10, (
+        f"{key}: the epoch-0 tolerance should clear observed round-off by a wide "
+        "margin, not scrape past it"
     )
 
-    # The exact absolute deviations CI exhibited over the first six epochs,
-    # extended by continued geometric amplification over the rest.
-    observed = np.array([6.205e-9, 8.822e-8, 3.344e-8, 5.385e-8, 6.510e-8, 2.449e-7])
-    tail = np.geomspace(observed[-1], 1e-5, e.size - observed.size + 1)[1:]
-    verdict = compare_to_reference_curve(e + np.concatenate([observed, tail]), expected,
-                                         "explained_variance")
-    assert verdict.first_epoch_deviation < golden.FIRST_EPOCH_TOL / 50, (
-        "the epoch-0 tolerance should clear observed round-off by a wide margin, "
-        "not scrape past it"
-    )
+    # ...and the amplified version of it by the end of the run. CI showed roughly
+    # two orders of magnitude of chaotic growth over twelve epochs.
+    amplified = e + np.geomspace(deviation, deviation * 300.0, e.size)
+    compare_to_reference_curve(amplified, expected, key)
 
-    # Detection power is retained: a change worth catching is a fraction of the
-    # curve's range, and 0.1% of range at epoch 0 is still ~1000x the threshold.
-    span = e.max() - e.min()
-    with pytest.raises(AssertionError, match="at the FIRST epoch"):
-        compare_to_reference_curve(e + 0.001 * span, expected, "explained_variance")
+
+@pytest.mark.parametrize("key", sorted(json.loads(REFERENCE.read_text())["curve"]))
+def test_first_epoch_tolerance_still_detects_a_real_change(key):
+    """Detection power, checked for every metric rather than argued in prose.
+
+    The tolerance has been widened twice. What must survive is the epoch-0
+    assertion's ability to catch a change in the update math -- so for *each*
+    reference metric, the smallest change worth calling real must still fail.
+
+    For a continuous metric that is a 1%-of-magnitude shift. A count cannot take
+    such a value at all: 1% of ``inner_epochs_used`` is 0.24 of its 1/6 step,
+    below the metric's own resolution. The smallest real change it can express is
+    two flipped decisions, one more than round-off explains.
+    """
+    expected = json.loads(REFERENCE.read_text())["curve"][key]
+    e = np.asarray(expected, dtype=np.float64)
+    step = golden.infer_step(expected)
+    shift = 2.0 * step if step else 0.01 * float(np.max(np.abs(e)))
+
+    with pytest.raises(AssertionError):
+        compare_to_reference_curve(e + shift, expected, key)
 
 
 @pytest.mark.parametrize("key", golden.STEP_VALUED_KEYS)
