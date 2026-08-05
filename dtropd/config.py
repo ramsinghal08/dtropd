@@ -24,6 +24,7 @@ from typing import Any
 import yaml
 
 __all__ = [
+    "REWARD_SPEC_VERSIONS",
     "Zone",
     "EnvConfig",
     "NetworkConfig",
@@ -40,6 +41,11 @@ __all__ = [
 
 class ConfigError(ValueError):
     """Raised when a configuration violates a hard specification constraint."""
+
+
+#: Frozen reward specifications (SPEC Sec. 10 / D3, Sec. 12 / D13). They may
+#: coexist; algorithm-performance comparisons may not span them.
+REWARD_SPEC_VERSIONS: tuple[str, ...] = ("v1", "v1-local")
 
 
 # --------------------------------------------------------------------------- #
@@ -73,10 +79,16 @@ class EnvConfig:
     capture_radius: float = 0.3
     max_cycles: int = 50
 
-    # SPEC Sec. 10 / D3: the reward definition is frozen. The environment
-    # asserts that it implements this version; any change to the reward shape
-    # requires a version bump and invalidates every stored curve.
+    # SPEC Sec. 10 / D3 + Sec. 12 / D13: reward versions are frozen and may
+    # coexist. "v1" is the primary condition (global team term). "v1-local"
+    # sums the team term over N_i instead, so Assumption 2 holds; it is used
+    # ONLY by H5's locality condition. No algorithm-performance comparison may
+    # span versions -- the launcher refuses.
     reward_spec_version: str = "v1"
+    #: Adjacency for the "v1-local" team term. The environment needs the
+    #: communication graph to sum over N_i; it is passed in rather than
+    #: rediscovered, so env and algorithm cannot disagree about the topology.
+    team_neighborhood: list[list[int]] | None = None
 
     # --- reward accounting -------------------------------------------------
     shaping_weight: float = 1.0
@@ -147,6 +159,29 @@ class EnvConfig:
             raise ConfigError("env.max_cycles must be >= 1")
         if not isinstance(self.reward_spec_version, str) or not self.reward_spec_version:
             raise ConfigError("env.reward_spec_version must be a non-empty string")
+        if self.reward_spec_version not in REWARD_SPEC_VERSIONS:
+            raise ConfigError(
+                f"env.reward_spec_version={self.reward_spec_version!r} is not a known "
+                f"frozen version {sorted(REWARD_SPEC_VERSIONS)}. Adding one is a "
+                "deliberate act (SPEC Sec. 10 / D3), not a typo."
+            )
+        if self.reward_spec_version == "v1-local":
+            if self.team_neighborhood is None:
+                warnings_out.append(
+                    "reward_spec_version='v1-local' without env.team_neighborhood: "
+                    "the team term will fall back to each agent alone, which is not "
+                    "the intended N_i-summed term. Set the adjacency."
+                )
+            elif len(self.team_neighborhood) != self.n_agents:
+                raise ConfigError(
+                    "env.team_neighborhood must have one adjacency list per agent "
+                    f"({len(self.team_neighborhood)} != {self.n_agents})"
+                )
+        elif self.team_neighborhood is not None:
+            warnings_out.append(
+                f"env.team_neighborhood is set but reward_spec_version="
+                f"{self.reward_spec_version!r} does not use it."
+            )
         return warnings_out
 
     @property

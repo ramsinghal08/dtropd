@@ -4,9 +4,13 @@ Implementation of D-TrOPD for networked multi-agent RL, plus baselines and a
 pre-registered experiment suite. `SPEC.md` is the authoritative specification;
 this README describes only what is built and how to run it.
 
-**Build status: Phases 0–5 complete. Phase 6 (experiment harness) not started.**
+**Build status: Phases 0–6 complete. Phase 7 (robustness + scale) not started.**
 
-SPEC.md §10–§11 record the **locked decisions** (D1–D10) that govern how these
+**No hypothesis has been evaluated.** H7 and every multi-seed headline
+experiment are gated at Phase 7; the harness is built and exercised on a smoke
+sweep only.
+
+SPEC.md §10–§12 record the **locked decisions** (D1–D13) that govern how these
 phases are configured and reported. They have the same standing as the
 invariants in §3.
 
@@ -18,7 +22,7 @@ invariants in §3.
 | 3 | D-TrOPD core (radius, attenuation, social loss, β warmup) | ✅ |
 | 4 | Baselines (MAPPO, HAPPO, NaiveDistill) | ✅ |
 | 5 | Instrumentation | ✅ |
-| 6 | Experiment harness (rliable figures, paired seeds) | ⬜ |
+| 6 | Experiment harness (rliable figures, paired seeds) | ✅ |
 | 7 | Robustness + scale | ⬜ |
 
 Asking for an unbuilt algorithm fails loudly and names the phase it belongs to,
@@ -59,6 +63,8 @@ python run.py eval  --config experiments/configs/dtropd_heterogeneous.yaml \
 python run.py plot --runs runs/phase2/seed0 runs/phase2/seed1 --out figures/curve.png
 python run.py analyze --run runs/phase5/dtropd_seed0     # every H1–H7 measurement
 python run.py sweep-check --configs experiments/configs/phase5_arm_*.yaml
+python run.py sweep --config experiments/configs/sweep_smoke.yaml --seeds 2
+python run.py calibration-grid --config <env>.yaml --windows 6 8 10
 pytest                                    # full suite, ~40 s on CPU
 ```
 
@@ -186,6 +192,44 @@ tamper-evident (its id is a hash of its contents). Every arm of a comparison
 pins the same file — **including arms with no radius of their own**: NaiveDistill
 declares which calibration its comparison used without acquiring a `δ_base`
 (D4 × D6). `sweep-check` refuses a sweep whose arms were calibrated separately.
+
+## The experiment harness (Phase 6)
+
+One command, from scratch, to the main comparison figure:
+
+```bash
+python run.py sweep --config experiments/configs/h7.yaml --seeds 10
+```
+
+It derives the calibration, runs every arm × seed, writes the manifest and the
+report, and renders the figure — no manual steps (SPEC §7). `--report-only`
+rebuilds the report and figure **from stored metrics alone**, and `--no-resume`
+forces a re-run.
+
+**Resumable.** A cell is complete iff its `summary.json` exists *and* the
+config fingerprint recorded in its `metadata.json` matches what the sweep asked
+for. Kill a sweep and restart it: finished cells are skipped, the rest run, and
+a *changed* config is never silently skipped. There is no partial-epoch resume —
+a half-written metrics file is worse than a re-run.
+
+**Three guards run before a single epoch**, because each is a way a comparison
+becomes quietly meaningless:
+
+| guard | refuses |
+|---|---|
+| D6 | arms in one environment that were calibrated **separately**. One artifact per *environment configuration*, pinned by every arm in it — a two-environment H7 sweep legitimately carries two |
+| D13 | an **algorithm-performance** comparison spanning reward spec versions. Environment-property arms may span, and are labelled `cross_version` |
+| paired seeds | arms overriding `train.seed`, or arms in one condition with different environment configs — either breaks the identical-env-instance guarantee |
+
+The report carries the **D8 interaction** (per-environment difference plus the
+predicted sign flip) and the **D9 consensus-pull cost**, both with bootstrap
+CIs, and per-arm IQM — rliable's headline estimators, computed in
+`dtropd.analysis` so the core package needs no extra dependency.
+
+![Phase 6 harness demonstration](figures/phase6_harness_demo.png)
+
+*Smoke sweep only (4 agents, 4 epochs, 2 seeds). This is a picture of the
+machinery working, **not a result**.*
 
 ## The environment
 
@@ -485,3 +529,51 @@ documented.
     interval, so every run's metrics file carries at least one — otherwise H5's
     measurability would depend on whether `total_epochs` happened to be a
     multiple of the interval.
+
+### Judgment calls made while implementing D7-amended, D11–D13 and Phase 6
+
+17. **D6 × D8 collided, and D6's own wording resolved it.** The calibration
+    check originally demanded one artifact for the whole sweep, which made D6
+    and D8 mutually unsatisfiable: H7 spans two environments, and D6 says the
+    calibration is measured "once per **environment configuration**". Arms are
+    now grouped by environment fingerprint and must share an artifact *within*
+    each group. A two-environment sweep carries two artifacts, which is correct
+    rather than a loophole.
+
+19. **`run.py calibrate --out` now emits the artifact, not a config YAML.** In
+    Phase 5 it wrote a calibrated config; but `distill.calibration_file` points
+    at a `CalibrationRecord`, so the command that produces the thing arms pin
+    must produce *that*. Caught by the D6 guard refusing a sweep whose pinned
+    artifacts did not exist.
+
+20. **The sweep derives missing calibrations once, then pins them
+    (`auto_calibrate`).** Without this the Phase 6 acceptance could not be one
+    command, since D6 requires artifacts to pre-exist. Deriving once per
+    environment at sweep start and pinning for every arm *is* the D6 workflow —
+    what D6 forbids is arms calibrating separately. Set `auto_calibrate: false`
+    to require pre-existing artifacts.
+
+21. **`v1-local`'s neighbourhood cannot capture if it is smaller than
+    `capture_group_size`.** With the team term summed over `N_i ∪ {i}`, a
+    neighbourhood of 2 can never satisfy a 3-agent capture. That is the honest
+    consequence of making the signal local, not a bug — but it means H5's
+    locality condition needs a topology with degree ≥ `capture_group_size`, and
+    `h5_locality.yaml` uses a ring over 16 agents accordingly.
+
+22. **The env now receives the communication graph** (`env.team_neighborhood`)
+    for `v1-local`. It is passed in rather than rediscovered so the environment
+    and the algorithm cannot disagree about the topology — a disagreement would
+    silently break exactly the locality property the condition exists to
+    provide.
+
+23. **Phase 6's acceptance was demonstrated on the smoke sweep, not on H7.**
+    SPEC's literal acceptance command is `run.py sweep --config h7.yaml --seeds
+    10`; the code path is identical and `h7.yaml` is shipped and validated by
+    the test suite, but running it would be the peek Phase 7 gates. This is a
+    deliberate deviation from the letter of the acceptance in favour of its
+    intent.
+
+24. **Two YAML schemas now live in `experiments/configs/`** — single-run
+    configs and sweep configs. `test_shipped_experiment_configs_validate` routes
+    by the presence of an `arms` key rather than by filename, so a new file
+    cannot dodge validation by being named unexpectedly.

@@ -1,0 +1,74 @@
+{
+  "acceptance": "Phase 6 -- experiment harness",
+  "sweep_config_used": "experiments/configs/sweep_smoke.yaml",
+  "h7_config_shipped_but_not_run": "experiments/configs/h7.yaml",
+  "criteria": {
+    "E1_one_command_end_to_end": {
+      "command": "/home/user/dtropd/.venv/bin/python /home/user/dtropd/run.py sweep --config /home/user/dtropd/experiments/configs/sweep_smoke.yaml --seeds 2 --out runs/phase6",
+      "returncode": 0,
+      "manifest": true,
+      "report": true,
+      "figure": true,
+      "figure_bytes": 67972,
+      "passed": true
+    },
+    "E2_kill_and_resume": {
+      "note": "sweep killed mid-run by timeout",
+      "completed_before_resume": 4,
+      "total_cells": 8,
+      "skipped_on_resume": 4,
+      "completed_on_resume": 4,
+      "all_cells_present_after_resume": true,
+      "no_resume_reruns_everything": true,
+      "passed": true
+    },
+    "E3_figure_from_stored_metrics": {
+      "returncode": 0,
+      "rebuilt_figure": true,
+      "passed": true
+    },
+    "E4_structural_guards": {
+      "d13_cross_version_refused": true,
+      "d13_message": "this sweep compares algorithms across reward spec versions, which makes the comparison meaningless: ippo_het=v1, dtropd_het=v1, ippo_hom=v1, dtropd_ho",
+      "paired_seeds_enforced": true,
+      "d6_one_calibration_per_environment": true,
+      "d6_groups": [
+        {
+          "env_fingerprint": "8b30113603caa909",
+          "arms": [
+            "ippo_het",
+            "dtropd_het"
+          ],
+          "calibration_id": "21f1c4e0ef5b8aa7",
+          "calibration_required": true
+        },
+        {
+          "env_fingerprint": "61a547c7d1119d2c",
+          "arms": [
+            "ippo_hom",
+            "dtropd_hom"
+          ],
+          "calibration_id": "bc8978c71fb9889c",
+          "calibration_required": true
+        }
+      ],
+      "passed": true
+    },
+    "E5_interaction_and_consensus_cost": {
+      "conditions": [
+        "heterogeneous",
+        "homogeneous"
+      ],
+      "interaction_reported": true,
+      "sign_flip_field_present": true,
+      "interaction_has_cis": true,
+      "consensus_pull_cost_algos": [
+        "dtropd"
+      ],
+      "consensus_pull_cost_has_ci": true,
+      "passed": true
+    }
+  },
+  "passed": true,
+  "not_a_result": "The harness was exercised on the smoke sweep (4 agents, 4 epochs). H7 is NOT run here: SPEC gates the experiment at Phase 7, and a preliminary look would bias later interpretation. No hypothesis is evaluated."
+}
