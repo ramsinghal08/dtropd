@@ -27,6 +27,7 @@ from dtropd.algorithms import (
     build_algorithm,
     calibrate_attenuation,
 )
+from dtropd import golden
 from dtropd.config import Config, ConfigError
 from dtropd.env import SyncVectorEnv
 from dtropd.train import train
@@ -36,10 +37,11 @@ REFERENCE = Path(__file__).resolve().parent / "data" / "ippo_phase2_reference.js
 
 ALL_ALGOS = ("ippo", "mappo", "happo", "naive_distill", "dtropd")
 
-#: Tolerances for the cross-machine golden-curve comparison. See
-#: compare_to_reference_curve() for why exact equality is the wrong assertion.
-FIRST_EPOCH_RTOL = 1e-7
-CURVE_RTOL = 1e-3
+#: Tolerances for the cross-machine golden-curve comparison live in
+#: ``dtropd.golden``, which explains at length why exact equality -- and then
+#: pointwise relative error -- were both the wrong assertion.
+FIRST_EPOCH_TOL = golden.FIRST_EPOCH_TOL
+CURVE_TOL = golden.CURVE_TOL
 
 
 def baseline_config(algo: str, n_agents: int = 4) -> Config:
@@ -145,54 +147,17 @@ def compare_to_reference_curve(
     actual: Sequence[float],
     expected: Sequence[float],
     key: str,
-    first_epoch_rtol: float = FIRST_EPOCH_RTOL,
-    curve_rtol: float = CURVE_RTOL,
-) -> None:
+    granularity: float | None = None,
+) -> golden.CurveVerdict:
     """Assert a curve still matches the golden reference, at the right precision.
 
-    Exact equality is **not** the right assertion here and asserting it was a
-    bug: the reference was generated on a different machine, and floating-point
-    addition is not associative, so a different BLAS build reorders reductions
-    and changes the last few bits. Training is chaotic, so those last bits
-    amplify: on CI the observed disagreement was 1.7e-9 relative at epoch 0 and
-    4.8e-7 by epoch 11 -- a smooth exponential amplification of round-off, with
-    no change in behaviour.
-
-    What this test actually needs to detect is a change in IPPO's *update math*.
-    That is caught by the first epoch, which is a single update from identical
-    initial weights, before chaos has anything to amplify: a real change moves
-    it in the 3rd-4th significant figure, round-off moves it in the 9th. Hence:
-
-    * epoch 0 to ``first_epoch_rtol`` (1e-7) -- ~100x tighter than any plausible
-      real change, ~50x looser than the observed cross-machine round-off;
-    * the whole curve to ``curve_rtol`` (1e-3) -- bounds the chaotic
-      amplification while still failing on real divergence, which is O(1).
-
-    The genuinely bitwise guarantee lives elsewhere and is untouched:
-    ``test_beta_zero_reproduces_ippo_bitwise`` compares two runs in the *same*
-    process (where exactness is achievable and meaningful), and
-    ``test_algorithms_are_deterministic_under_a_seed`` pins same-process repeat
-    runs. This test is the cross-machine, cross-time one, and it is the only
-    place a tolerance is appropriate.
+    The rule itself lives in :mod:`dtropd.golden`, shared with
+    ``experiments/phase4_acceptance.py`` -- when it was written out twice, one
+    copy got fixed and the other did not.
     """
-    a = np.asarray(list(actual), dtype=np.float64)
-    e = np.asarray(list(expected), dtype=np.float64)
-    assert a.shape == e.shape, f"{key}: got {a.shape} epochs, reference has {e.shape}"
-
-    scale = np.maximum(np.abs(e), 1e-12)
-    rel = np.abs(a - e) / scale
-
-    assert rel[0] <= first_epoch_rtol, (
-        f"IPPO's {key} changed since Phase 2 at the FIRST epoch: relative "
-        f"deviation {rel[0]:.3g} exceeds {first_epoch_rtol:g}. One update from "
-        f"identical initial weights should not move at this magnitude unless "
-        f"the update math changed.\n  reference[0]: {e[0]!r}\n  current[0]:   {a[0]!r}"
-    )
-    assert rel.max() <= curve_rtol, (
-        f"IPPO's {key} curve diverged from the Phase 2 reference: max relative "
-        f"deviation {rel.max():.3g} at epoch {int(rel.argmax())} exceeds "
-        f"{curve_rtol:g}.\n  reference: {list(e)}\n  current:   {list(a)}"
-    )
+    verdict = golden.compare_curve(key, actual, expected, granularity=granularity)
+    assert verdict.ok, verdict.reason
+    return verdict
 
 
 def test_ippo_curves_match_the_phase2_reference():
@@ -230,6 +195,105 @@ def test_reference_comparison_rejects_a_real_change_and_tolerates_round_off():
     # A different number of epochs is a mismatch, not a tolerance question.
     with pytest.raises(AssertionError, match="epochs"):
         compare_to_reference_curve(e[:-1], expected, "episode_return_mean")
+
+
+def test_reference_comparison_survives_a_metric_that_crosses_zero():
+    """Regression: pointwise *relative* error is wrong for a zero-crossing curve.
+
+    ``explained_variance`` starts at -0.0099 (an untrained critic explains
+    nothing) and rises to 0.58, so its first value is 1.7% of its own range.
+    Dividing by it turned a 6.2e-9 round-off difference -- the same round-off
+    that read as 1.7e-9 on the return curve -- into a 6.3e-7 "relative error"
+    and reddened CI a second time. The numbers below are the ones CI actually
+    produced.
+    """
+    expected = json.loads(REFERENCE.read_text())["curve"]["explained_variance"]
+    e = np.asarray(expected, dtype=np.float64)
+    assert abs(e[0]) / (e.max() - e.min()) < 0.02, (
+        "this test is only meaningful while the reference curve still starts "
+        "near zero relative to its range"
+    )
+
+    # The exact absolute deviations CI exhibited over the first six epochs,
+    # extended by continued geometric amplification over the rest.
+    observed = np.array([6.205e-9, 8.822e-8, 3.344e-8, 5.385e-8, 6.510e-8, 2.449e-7])
+    tail = np.geomspace(observed[-1], 1e-5, e.size - observed.size + 1)[1:]
+    verdict = compare_to_reference_curve(e + np.concatenate([observed, tail]), expected,
+                                         "explained_variance")
+    assert verdict.first_epoch_deviation < golden.FIRST_EPOCH_TOL / 50, (
+        "the epoch-0 tolerance should clear observed round-off by a wide margin, "
+        "not scrape past it"
+    )
+
+    # Detection power is retained: a change worth catching is a fraction of the
+    # curve's range, and 0.1% of range at epoch 0 is still ~1000x the threshold.
+    span = e.max() - e.min()
+    with pytest.raises(AssertionError, match="at the FIRST epoch"):
+        compare_to_reference_curve(e + 0.001 * span, expected, "explained_variance")
+
+
+@pytest.mark.parametrize("key", golden.STEP_VALUED_KEYS)
+def test_discrete_metrics_are_recognised_as_counts(key):
+    """The keys known to be counts must still be inferred as counts.
+
+    ``inner_epochs_used`` is how many inner epochs ran before the KL early-stop
+    tripped (averaged over 6 agents, so steps of 1/6) and ``clip_fraction`` is
+    the fraction of samples the PPO ratio clipped (steps of 1/4800). Both respond
+    to round-off in whole steps, not as a smooth drift, so both need comparing in
+    their own units -- and neither should depend on someone remembering to say
+    so.
+    """
+    expected = json.loads(REFERENCE.read_text())["curve"][key]
+    step = golden.infer_step(expected)
+    assert step is not None, (
+        f"{key} is a count but was classified as continuous; a single flipped "
+        "threshold decision would then read as a behaviour change"
+    )
+    assert golden.compare_curve(key, expected, expected).kind == "step"
+
+
+def test_step_valued_metrics_are_compared_in_their_own_units():
+    """One flipped decision is round-off; a bulk shift is a behaviour change.
+
+    A borderline KL early-stop comparison decided differently on another machine
+    moves ``inner_epochs_used`` by exactly ``1/n_agents`` -- for the reference
+    config that is 100% of this curve's range, so no continuous tolerance can
+    both accept it and mean anything.
+    """
+    expected = json.loads(REFERENCE.read_text())["curve"]["inner_epochs_used"]
+    e = np.asarray(expected, dtype=np.float64)
+    step = golden.infer_step(expected)
+
+    # One agent early-stopping one inner epoch differently: attributable to round-off.
+    one_flip = e.copy()
+    one_flip[3] += step
+    compare_to_reference_curve(one_flip, expected, "inner_epochs_used")
+
+    # Two agents at the same epoch is beyond what a single flipped comparison explains.
+    two_flips = e.copy()
+    two_flips[3] -= 2 * step
+    with pytest.raises(AssertionError, match="diverged from the Phase 2 reference"):
+        compare_to_reference_curve(two_flips, expected, "inner_epochs_used")
+
+    # The early-stop schedule collapsing is a behaviour change, not round-off.
+    with pytest.raises(AssertionError, match="flipped decisions"):
+        compare_to_reference_curve(e - 1.0, expected, "inner_epochs_used")
+
+
+def test_step_inference_does_not_mistake_continuous_curves_for_counts():
+    """The inference must not fire on smooth metrics, or it would mask real drift.
+
+    A continuous curve reported as a count would be compared in steps rather than
+    against the epoch-0 tolerance, which is where the actual detection power is.
+    """
+    reference = json.loads(REFERENCE.read_text())["curve"]
+    for key in ("episode_return_mean", "explained_variance", "value_loss", "entropy"):
+        assert golden.infer_step(reference[key]) is None, f"{key} is not a count"
+
+    rng = np.random.default_rng(0)
+    for magnitude in (1e-3, 1.0, 30.0):
+        for _ in range(50):
+            assert golden.infer_step(rng.normal(size=12) * magnitude) is None
 
 
 # --------------------------------------------------------------------------- #
