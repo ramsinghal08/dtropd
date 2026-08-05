@@ -26,7 +26,7 @@ notes: >-
   {4,8,12,24,48} -- N=48 retained per D15. Environment-property measurement.
 out_dir: runs/h5_scale
 seeds: [0, 1, 2, 3, 4]
-auto_calibrate: false
+auto_calibrate: true
 
 base:
   env:
@@ -49,7 +49,9 @@ base:
     warmup_fraction: 0.1
     kappa: 100.0
     delta_base: 0.1
-    calibration: none
+    calibration: warmup
+    calibration_epochs: 8
+    calibration_pool_epochs: 2
   instrument:
     surrogate_gain: true
     per_edge_gradients: false

@@ -22,7 +22,7 @@ notes: >-
   Environment-property measurement, not an algorithm comparison.
 out_dir: runs/h4_scale
 seeds: [0, 1, 2, 3, 4]
-auto_calibrate: false
+auto_calibrate: true
 
 base:
   env:
@@ -45,7 +45,9 @@ base:
     warmup_fraction: 0.1
     kappa: 100.0
     delta_base: 0.1
-    calibration: none
+    calibration: warmup
+    calibration_epochs: 8
+    calibration_pool_epochs: 2
   instrument:
     surrogate_gain: true      # H4's measurement
     per_edge_gradients: false # H1's, and O(N^2) here
