@@ -103,6 +103,25 @@ def build_parser() -> argparse.ArgumentParser:
     p_cal.add_argument("--epochs", type=int, default=10, help="calibration window length")
     p_cal.add_argument("--seed", type=int, default=None)
 
+    p_sweep = sub.add_parser(
+        "sweep-check",
+        help="refuse a sweep whose arms were calibrated separately (SPEC D6)",
+    )
+    p_sweep.add_argument(
+        "--configs", nargs="+", required=True, help="one config per arm of the sweep"
+    )
+    p_sweep.add_argument(
+        "--allow-uncalibrated",
+        action="store_true",
+        help="permit a sweep in which no arm declares a calibration artifact",
+    )
+
+    p_analyze = sub.add_parser(
+        "analyze", help="compute every H1-H7 measurement from one run's metrics file"
+    )
+    p_analyze.add_argument("--run", required=True)
+    p_analyze.add_argument("--out", default=None)
+
     p_smoke = sub.add_parser(
         "smoke", help="2-agent CPU smoke run (SPEC Sec. 9 rule 6: always works)"
     )
@@ -150,6 +169,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_validate(args)
         if args.command == "calibrate":
             return _cmd_calibrate(args)
+        if args.command == "sweep-check":
+            return _cmd_sweep_check(args)
+        if args.command == "analyze":
+            return _cmd_analyze(args)
         if args.command == "smoke":
             return _cmd_smoke(args)
     except ConfigError as exc:
@@ -306,6 +329,62 @@ def _cmd_calibrate(args: argparse.Namespace) -> int:
             before,
         )
     return 0
+
+
+def _cmd_sweep_check(args: argparse.Namespace) -> int:
+    """SPEC Sec. 11 / D6: every arm of a comparison must share one calibration.
+
+    Arms with no radius of their own (NaiveDistill, per D4) still declare the
+    artifact their comparison used -- declaring is what makes the check able to
+    tell "the same calibration" from "two calibrations that happen to be close".
+    """
+    from .calibration import CalibrationError, CalibrationRecord, assert_shared_calibration
+
+    rows: list[tuple[str, Any]] = []
+    for path in args.configs:
+        cfg = Config.from_yaml(path)
+        cfg.validate(emit=False)
+        record = None
+        if cfg.distill.calibration_file:
+            record = CalibrationRecord.load(cfg.distill.calibration_file)
+        rows.append((f"{cfg.train.algo}:{Path(path).name}", record))
+
+    try:
+        shared = assert_shared_calibration(
+            rows, require_calibration=not args.allow_uncalibrated
+        )
+    except CalibrationError as exc:
+        logger.error("sweep rejected: %s", exc)
+        return 5
+
+    print(
+        json.dumps(
+            {
+                "arms": [
+                    {
+                        "arm": name,
+                        "calibration_id": rec.calibration_id if rec else None,
+                        "delta_base": rec.delta_base if rec else None,
+                    }
+                    for name, rec in rows
+                ],
+                "shared_calibration_id": shared,
+                "ok": True,
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+def _cmd_analyze(args: argparse.Namespace) -> int:
+    import subprocess
+
+    script = Path(__file__).resolve().parent.parent / "experiments" / "analyze_hypotheses.py"
+    cmd = [sys.executable, str(script), "--run", args.run, "--quiet"]
+    if args.out:
+        cmd += ["--out", args.out]
+    return subprocess.call(cmd)
 
 
 def _cmd_smoke(args: argparse.Namespace) -> int:

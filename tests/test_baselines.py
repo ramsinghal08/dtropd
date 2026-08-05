@@ -362,24 +362,36 @@ def test_calibrate_attenuation_rejects_empty_input():
 
 
 def test_warmup_calibration_runs_inside_training():
+    """SPEC Sec. 11 / D6: fixed beta=0 window, delta_base pooled over its tail."""
     cfg = baseline_config("dtropd", n_agents=4)
     cfg.distill.calibration = "warmup"
-    cfg.distill.warmup_epochs = 2
+    cfg.distill.calibration_epochs = 3
+    cfg.distill.calibration_pool_epochs = 2
+    cfg.distill.warmup_epochs = 1
     cfg.distill.beta_max = 0.5
     cfg.validate(emit=False)
 
-    algo, history = run_epochs(cfg, seed=7, epochs=4)
+    algo, history = run_epochs(cfg, seed=7, epochs=5)
     assert algo._calibrated
     assert algo.delta_base != cfg.distill.delta_base
-    calibrated_epochs = [h for h in history if "calibrated_at_epoch" in h]
-    assert len(calibrated_epochs) == 1
-    assert calibrated_epochs[0]["calibrated_at_epoch"] == 1  # end of the window
-    # beta is exactly 0 for the whole calibration window, so the measurement
-    # cannot have been influenced by the gate it calibrates (SPEC Sec. 10 / D1).
-    assert all(h["beta"] == 0.0 for h in history[:2])
+    calibrated = [h for h in history if "calibrated_at_epoch" in h]
+    assert len(calibrated) == 1
+    assert calibrated[0]["calibrated_at_epoch"] == 2  # end of a 3-epoch window
+    # D6: pooled over the FINAL 2 epochs of the window, not all of it.
+    assert calibrated[0]["calibration_pooled_epochs"] == [1, 2]
+    # beta is exactly 0 for the whole window, so the measurement cannot have
+    # been influenced by the gate it calibrates (SPEC Sec. 10 / D1).
+    assert all(h["beta"] == 0.0 for h in history[:3])
     # ...and the ramp starts afterwards, so I8 still gets a real warmup.
-    assert history[2]["beta"] == 0.0
     assert history[-1]["beta"] > 0.0
+    # The measurement is emitted as an auditable artifact (D6).
+    record = algo.calibration_record
+    assert record is not None
+    assert record.window_epochs == 3
+    assert record.pooled_epochs == [1, 2]
+    assert record.reward_spec_version == "v1"
+    assert record.edge_count > 0
+    assert set(record.quantiles) >= {"p05", "p50", "p95"}
 
 
 def test_calibration_default_is_off():
@@ -431,7 +443,7 @@ def test_divergence_drift_is_logged_in_both_radius_arms():
         _, history = run_epochs(cfg, seed=0, epochs=3)
         for h in history:
             for key in (
-                "social_divergence_p5",
+                "social_divergence_p05",
                 "social_divergence_p50",
                 "social_divergence_p95",
                 "social_divergence_drift",

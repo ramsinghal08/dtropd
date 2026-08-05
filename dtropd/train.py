@@ -13,6 +13,8 @@ import torch
 
 from .algorithms import BaseAlgorithm, build_algorithm
 from .config import Config
+from .instrumentation import quantiles as _quantiles
+from .probes import decay_probe
 from .env import SyncVectorEnv
 from .evaluate import EvalResult, evaluate_policy, evaluate_random_policy
 from .utils import (
@@ -101,6 +103,15 @@ def train(
         algo=cfg.train.algo,
         # SPEC Sec. 10 / D3: every run records which frozen reward it optimised.
         reward_spec_version=cfg.env.reward_spec_version,
+        # SPEC Sec. 11: the metrics schema is versioned too. A schema change
+        # after H7 starts invalidates stored curves, same as a reward bump.
+        metrics_schema_version=cfg.instrument.metrics_schema_version,
+        calibration_id=(
+            algo.calibration_record.calibration_id if algo.calibration_record else None
+        ),
+        calibration=(
+            algo.calibration_record.to_dict() if algo.calibration_record else None
+        ),
         obs_dim=cfg.env.obs_dim,
         act_dim=cfg.env.act_dim,
         batch_size_per_agent=cfg.batch_size,
@@ -149,6 +160,36 @@ def train(
         record.update(rollout_stats)
         record.update({k: v for k, v in update_stats.items() if k != "per_agent"})
         record["per_agent"] = update_stats.get("per_agent", [])
+        record.update(algo.compute_accounting())
+
+        # D9: the consensus measure, computed identically for every algorithm so
+        # the distillation arms have an uncontaminated IPPO control.
+        if cfg.instrument.consensus_pull:
+            record.update(
+                _quantiles(
+                    algo.policy_dispersion(),
+                    cfg.instrument.quantiles,
+                    "consensus_pull/policy_dispersion_",
+                )
+            )
+
+        # H5's second measurement: the Assumption-2 decay probe. Interval-gated
+        # because it needs its own paired rollouts, but always run on the final
+        # epoch so every run's metrics file carries at least one.
+        inst = cfg.instrument
+        if inst.decay_probe and (
+            (epoch + 1) % inst.decay_probe_interval == 0
+            or epoch == cfg.train.total_epochs - 1
+        ):
+            record["decay_probe"] = decay_probe(
+                algo,
+                cfg.env,
+                n_perturbed=inst.decay_probe_agents,
+                episodes=inst.decay_probe_episodes,
+                scale=inst.decay_probe_scale,
+                seed=derive_seed(seed, "probe", epoch),
+                quantile_list=inst.quantiles,
+            )
 
         ev = record.get("explained_variance", float("nan"))
         if np.isfinite(ev):
@@ -196,6 +237,14 @@ def train(
             torch.save(algo.state_dict(), run_dir / f"checkpoint_{epoch + 1}.pt")
 
     torch.save(algo.state_dict(), run_dir / "checkpoint_final.pt")
+    # SPEC Sec. 11 / D6: an in-run calibration is measured *during* training, so
+    # it cannot be in the metadata written at start-up. Persist the artifact so
+    # every other arm of this comparison can pin itself to it.
+    if getattr(algo, "calibration_record", None) is not None:
+        algo.calibration_record.save(run_dir / "calibration.json")
+        metadata["calibration_id"] = algo.calibration_record.calibration_id
+        metadata["calibration"] = algo.calibration_record.to_dict()
+        (run_dir / "metadata.json").write_text(json.dumps(metadata, indent=2, default=str))
     wall = time.time() - start
 
     if final_eval is None:  # pragma: no cover - only if total_epochs == 0
