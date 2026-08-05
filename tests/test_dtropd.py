@@ -207,7 +207,7 @@ def test_social_kl_is_reverse_student_first():
     algo.collect_rollout(vec)
     algo._beta = 1.0
     data = algo.buffer.agent_tensors(0)
-    algo._social[0] = algo._prepare_social(0, data)
+    algo._social[0] = algo._prepare_epoch(0, data)
     state = algo._social[0]
 
     # Freshly-initialised agents share log_std, and for equal variances the
@@ -278,9 +278,9 @@ def test_trust_batch_is_honoured():
     algo.collect_rollout(vec)
     data = algo.buffer.agent_tensors(0)
 
-    own = algo._prepare_social(0, data).divergence.clone()
+    own = algo._prepare_epoch(0, data).divergence.clone()
     algo.cfg.distill.trust_batch = "pooled"
-    pooled = algo._prepare_social(0, data).divergence.clone()
+    pooled = algo._prepare_epoch(0, data).divergence.clone()
 
     assert own.shape == pooled.shape
     assert not torch.allclose(own, pooled), "the pooled path is dead code"
@@ -297,7 +297,7 @@ def test_attenuation_mode_is_honoured():
     weights = {}
     for mode in ("continuous", "hard_switch", "hard_cutoff"):
         algo.cfg.distill.attenuation = mode
-        weights[mode] = algo._prepare_social(0, data).weight.clone()
+        weights[mode] = algo._prepare_epoch(0, data).weight.clone()
 
     assert torch.all((weights["hard_cutoff"] == 0.0) | (weights["hard_cutoff"] == 1.0))
     assert not torch.allclose(weights["continuous"], weights["hard_cutoff"])
@@ -313,12 +313,12 @@ def test_neighbor_selection_is_honoured():
     data = algo.buffer.agent_tensors(0)
 
     assert algo.cfg.distill.neighbor_selection == "all"
-    all_w = algo._prepare_social(0, data).weight
+    all_w = algo._prepare_epoch(0, data).weight
     assert torch.all(all_w > 0.0)
 
     algo.cfg.distill.neighbor_selection = "top_k"
     algo.cfg.distill.top_k = 2
-    top_w = algo._prepare_social(0, data).weight
+    top_w = algo._prepare_epoch(0, data).weight
     assert int((top_w > 0).sum()) == 2, "top_k did not gate the neighbour set"
 
 

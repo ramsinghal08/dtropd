@@ -4,7 +4,11 @@ Implementation of D-TrOPD for networked multi-agent RL, plus baselines and a
 pre-registered experiment suite. `SPEC.md` is the authoritative specification;
 this README describes only what is built and how to run it.
 
-**Build status: Phases 0–3 complete. Phase 4 (baselines) not started.**
+**Build status: Phases 0–5 complete. Phase 6 (experiment harness) not started.**
+
+SPEC.md §10–§11 record the **locked decisions** (D1–D10) that govern how these
+phases are configured and reported. They have the same standing as the
+invariants in §3.
 
 | Phase | Scope | State |
 |---|---|---|
@@ -12,8 +16,8 @@ this README describes only what is built and how to run it.
 | 1 | Env + networks + closed-form KL | ✅ |
 | 2 | IPPO | ✅ |
 | 3 | D-TrOPD core (radius, attenuation, social loss, β warmup) | ✅ |
-| 4 | Baselines (MAPPO, HAPPO, NaiveDistill) | ⬜ |
-| 5 | Instrumentation | ⬜ |
+| 4 | Baselines (MAPPO, HAPPO, NaiveDistill) | ✅ |
+| 5 | Instrumentation | ✅ |
 | 6 | Experiment harness (rliable figures, paired seeds) | ⬜ |
 | 7 | Robustness + scale | ⬜ |
 
@@ -40,7 +44,8 @@ test_physics_matches_mpe2_world`), not as a runtime dependency of training.
 ## Quick start
 
 `run.py` is subcommand-driven — every invocation takes one of
-`train`, `eval`, `plot`, `validate`, `smoke`:
+`train`, `eval`, `plot`, `validate`, `calibrate`, `sweep-check`, `analyze`,
+`smoke`:
 
 ```bash
 python run.py --help
@@ -52,7 +57,9 @@ python run.py train --config experiments/configs/dtropd_heterogeneous.yaml --see
 python run.py eval  --config experiments/configs/dtropd_heterogeneous.yaml \
     --checkpoint runs/dtropd_heterogeneous/dtropd_seed0/checkpoint_final.pt
 python run.py plot --runs runs/phase2/seed0 runs/phase2/seed1 --out figures/curve.png
-pytest                                    # full suite, ~20 s on CPU
+python run.py analyze --run runs/phase5/dtropd_seed0     # every H1–H7 measurement
+python run.py sweep-check --configs experiments/configs/phase5_arm_*.yaml
+pytest                                    # full suite, ~40 s on CPU
 ```
 
 `train` and `eval` also accept `--set KEY=VALUE` overrides and `--no-strict`
@@ -74,7 +81,7 @@ dtropd/
   networks.py    tanh-Gaussian actor, critic, policy_parameters() helper
   buffer.py      rollout storage, GAE (with time-limit bootstrapping)
   kl.py          closed-form Gaussian KL utilities (single source of truth)
-  algorithms.py  shared base class + IPPO (D-TrOPD & baselines land later)
+  algorithms.py  base class, IPPO, MAPPO, HAPPO, NaiveDistill, D-TrOPD
   robust.py      trimmed mean, geometric median, Krum
   train.py       training loop, logging, checkpointing, seeding
   evaluate.py    eval rollouts, metrics
@@ -84,9 +91,101 @@ dtropd/
 tests/           test_kl, test_env, test_invariants, test_attenuation, test_smoke, …
 experiments/
   configs/*.yaml
-  phase2_acceptance.py
+  phase2_acceptance.py  phase3_acceptance.py  phase4_acceptance.py
+  _ippo_reference_curve.py   # regenerates the Phase 2 golden curve
+tests/data/ippo_phase2_reference.json   # golden curve, made on commit 011de8f
 notebooks/D_TrOPD.ipynb
 ```
+
+## Algorithms
+
+| name | critic | update order | distillation |
+|---|---|---|---|
+| `ippo` | local `V_i(o_i)` | simultaneous | none |
+| `mappo` | centralised, over concatenated observations | simultaneous | none |
+| `happo` | local | **sequential, random order each epoch**, with the HAPPO importance factor | none |
+| `naive_distill` | local | simultaneous | every neighbour, `w_ij = 1` **structurally** |
+| `dtropd` | local (SPEC §2: no central critic) | simultaneous | trust-gated, `w_ij` from `D_ij` vs `δ_i` |
+
+`naive_distill` is its own class, not a D-TrOPD config (SPEC §10 / D4): it has
+no radius and no attenuation code path at all, so "NaiveDistill" and
+"miscalibrated D-TrOPD" can never be the same run.
+
+## Calibrating the attenuation (SPEC §10 / D1)
+
+`δ_base` and `γ` are the only D-TrOPD constants SPEC does not pin down, and a
+mis-set `δ_base` silently disables the whole mechanism. They are therefore
+**measured, not chosen**:
+
+```bash
+# offline: emit a calibrated config, with its provenance recorded in `notes`
+python run.py calibrate --config experiments/configs/dtropd_heterogeneous.yaml \
+    --epochs 10 --out experiments/configs/dtropd_heterogeneous_static.yaml
+```
+
+```yaml
+# in-run: the same procedure, executed during training
+distill:
+  calibration: warmup      # beta is held at exactly 0 for the window
+```
+
+Both paths call the same `calibrate_attenuation()`, so they cannot drift apart.
+`δ_base` is set to the median observed `D_ij` and `γ` so that a 95th-percentile
+edge is attenuated to `w = 0.5`. Headline configs set `calibration: warmup`;
+defaults stay uncalibrated so no existing config silently changes. D-TrOPD warns
+loudly whenever mean `w_ij > 0.95` with β > 0.
+
+## Instrumentation (Phase 5)
+
+The acceptance bar is that **one** run's metrics file supports **every** H1–H7
+measurement without re-running. That is demonstrated literally:
+
+```bash
+python experiments/phase5_acceptance.py          # runs one job, then measures H1–H7 from it
+python run.py analyze --run runs/phase5/dtropd_seed0
+```
+
+| hypothesis | what the file carries |
+|---|---|
+| H1 | per-edge social-gradient **sign-flip counts bucketed by `\|D_ij − δ_i\|`**, plus gradient cosines |
+| H2 | per-edge `σ_i` (student) and `σ_j` (teacher) alongside `D_ij`, so σ trajectories on high-`D_ij` edges are recoverable |
+| H3 | `δ_i`, `Δ_i`, the radius signal and reference in use, critic EV |
+| H4 | per-agent **surrogate gain** vs the realised change in return, per round |
+| H5 | the same per capita, **plus the Assumption-2 decay probe** — perturb agent *j*, record induced \|ΔQ^i\| against hop distance |
+| H6 | per-run aggregation, Byzantine fraction and final return (the sweep cell) |
+| H7 | per-environment returns, per-zone returns, calibration id, consensus-pull share and dispersion |
+
+Everything distributional is logged as **quantiles, not means** (SPEC §11): the
+`δ_base` failure was invisible in the mean and obvious in the `D_ij` quantiles.
+The metrics schema is versioned (`metrics_schema_version`) and stamped into
+`metadata.json`; a schema change after H7 starts invalidates stored curves
+exactly as a `reward_spec_version` bump does.
+
+`experiments/analyze_hypotheses.py` exits non-zero if any hypothesis is not
+computable — "we'll add that logging later" is the failure Phase 5 exists to
+prevent.
+
+## Calibration is pinned across a comparison (SPEC §11 / D6)
+
+The rule is fixed and pre-registered: a hard **8-epoch β = 0 window**, `δ_base`
+= the median `D_ij` **pooled over that window's final 2 epochs**, `γ` set so a
+p95 edge attenuates to `w = 0.5`. **The number 8 is arbitrary** — SPEC says so
+in those words. It is fixed so it is not a researcher degree of freedom, and D7
+measures how much it matters.
+
+The measurement is an **artifact**, not two numbers in a YAML:
+
+```bash
+python run.py calibrate --config <cfg> --epochs 8 --out experiments/calibrations/<env>.json
+python run.py sweep-check --configs experiments/configs/phase5_arm_*.yaml
+```
+
+The artifact records the window, the epochs pooled, the edge count, the full
+`D_ij` quantile table, `reward_spec_version` and the git commit, and is
+tamper-evident (its id is a hash of its contents). Every arm of a comparison
+pins the same file — **including arms with no radius of their own**: NaiveDistill
+declares which calibration its comparison used without acquiring a `δ_base`
+(D4 × D6). `sweep-check` refuses a sweep whose arms were calibrated separately.
 
 ## The environment
 
@@ -154,8 +253,25 @@ learnable setting, and each can be reverted in one line.
 
 Points 2 and 3 are optimisation fixes with no algorithmic content. Point 1
 changes the task, so it is called out here rather than buried in a default.
+It is now settled by SPEC §10 / D2: `local_ratio = 0.5` is the primary
+condition, and `experiments/configs/secondary_pure_global.yaml` carries the
+pure-global variant as an explicitly-labelled secondary condition.
 
-### 4. δ_base and γ are *not* calibrated by default — and that matters
+### 4. δ_base and γ are measured, not chosen — and the window length matters
+
+*(Resolved by SPEC §10 / D1; the finding that prompted it is kept below because
+it is the reason the decision exists.)*
+
+New caveat surfaced while implementing the procedure: **the calibrated value
+depends on how long the calibration window is.** `D_ij` drifts upward during
+training, so measuring over 8 epochs gave `δ_base = 0.026` and over 10 epochs
+`δ_base = 0.049` on the same config and seed. That is D5's confound showing up
+inside D1's procedure. The window length is therefore a reported parameter of
+the method, recorded in the emitted config's `notes`, not an implementation
+detail. Both the fixed and `running_quantile` arms log the per-epoch `D_ij`
+percentiles and the drift ratio so this is always visible.
+
+### 4a. The original finding
 
 SPEC.md fixes the form of the attenuation but not its two constants. The
 shipped defaults (`delta_base: 0.1`, `gamma_attenuation: 1.0`) turn out to sit
@@ -282,3 +398,90 @@ The "clear margin" criterion is operationalised in that script (every seed
 must beat the random policy by ≥ 10 standard errors of the random baseline,
 every seed must improve, and every seed's critic explained variance must exceed
 0.3), and it prints the numbers it judged.
+
+### Judgment calls made while implementing D1–D5 and Phase 4
+
+5. **The calibration window holds β at exactly 0, and shifts the warmup ramp.**
+   D1's rationale requires the `D_ij` measurement to be taken with the gate
+   inactive. A linear β warmup is *not* zero after its first epoch, so reusing
+   the warmup window as the calibration window would have measured `D_ij` under
+   a partly-active gate — quietly violating the stated rationale. Instead the
+   calibration window pins β = 0 and the full-length warmup ramp starts after
+   it, so invariant I8 still gets a complete ramp. The alternatives were to
+   calibrate on epoch 0 alone (a much smaller sample) or to accept the
+   contamination; both seemed worse than shifting the ramp.
+
+6. **HAPPO keeps local critics, and includes the importance factor.** SPEC
+   describes HAPPO only as "sequential updates, random agent order re-sampled
+   each epoch". Two gaps had to be filled. First, the critic: HAPPO is
+   implemented with IPPO's *local* critics rather than a centralised one, so
+   that the sequential-update variable is isolated and MAPPO remains the arm
+   that varies critic centralisation. Second, the correction factor: a
+   sequential update without HAPPO's `M_i = Π_{j before i} π_j^new/π_j^old` has
+   no monotonic-improvement argument at all, which is the only interesting
+   property of updating sequentially — so it is implemented. The factor is
+   clamped to `[1e-4, 1e4]`, since a product over 12 agents can otherwise
+   overflow; the clamp is logged.
+
+7. **MAPPO concatenates in fixed agent-index order**, giving every agent the
+   *same* joint critic input at a transition. This keeps MAPPO's advantage over
+   IPPO purely a matter of critic information rather than asymmetric inputs.
+
+8. **Phase 4 uses one shared config file, not five.** `train.algo` (and the
+   structural `distill.enabled`) are the only per-algorithm overrides, and the
+   acceptance harness enumerates every field that differs and fails if anything
+   else does. "Shared hyperparameters" is then a property of the code rather
+   than of five YAML files staying in sync by inspection.
+
+9. **`run.py calibrate` runs the real training loop** rather than a separate
+   measurement path, so the offline command and `calibration: warmup` execute
+   the same code and cannot disagree about what the procedure is.
+
+**No hyperparameter search was performed for any algorithm.** Every algorithm in
+Phase 4 uses the Phase 2 IPPO settings unchanged (SPEC §9 rule 5). If tuning is
+done later for D-TrOPD, the same search must be run for MAPPO and HAPPO and
+documented.
+
+### Judgment calls made while implementing D6–D10 and Phase 5
+
+10. **D6 × D4: NaiveDistill declares a calibration it does not consume.** D6
+    requires the calibration to be "pinned for every arm in that comparison
+    (D-TrOPD, NaiveDistill, and any ablation sharing the env)", while D4
+    requires NaiveDistill to have no `δ_base` at all. Resolved by separating
+    *declaration* from *consumption*: every algorithm — including IPPO — loads
+    and stamps the artifact for provenance and for `sweep-check`, but only
+    D-TrOPD reads `delta_base` out of it. `test_naive_distill_declares_a_
+    calibration_without_owning_a_radius` holds both halves.
+
+11. **The calibration window is its own knob, not the β warmup.** D6 fixes an
+    8-epoch β = 0 prefix; the previous implementation derived the window from
+    `warmup_fraction`. These are now separate (`distill.calibration_epochs`), so
+    changing the training length no longer silently changes the calibration
+    rule.
+
+12. **Sign flips are measured by gradient cosine, not by a scalar sign.** A
+    per-edge social gradient is a vector, so "sign flip" needs a definition. A
+    flip is recorded when the cosine between an edge's gradient this epoch and
+    last epoch is negative. The alternative — tracking the sign of some scalar
+    projection — would have depended on an arbitrary choice of projection.
+
+13. **The per-edge gradient pass runs *outside* the inner loop**, on a fixed
+    256-sample subsample, after the agent's update. Instrumentation that can
+    perturb the update it measures is worse than no instrumentation, and this
+    also keeps the β = 0 bitwise-IPPO property intact.
+
+14. **`Q^i` in the decay probe is the observer's realised episode return** under
+    the perturbed joint policy, measured against an unperturbed baseline on
+    identical environment seeds. A true `Q^i` is not available; the proxy and
+    its pairing are stated in `dtropd/probes.py` rather than left implicit.
+
+15. **D7 and D8's decision rules are code, not prose.**
+    `analysis.d7_sensitivity_verdict()` applies the pre-registered rule to the
+    three `δ_base` arms, and `analysis.h7_interaction()` computes the predicted
+    sign flip. Written before any H7 run, so neither can be quietly
+    reinterpreted once numbers exist.
+
+16. **The decay probe always fires on the final epoch**, in addition to its
+    interval, so every run's metrics file carries at least one — otherwise H5's
+    measurability would depend on whether `total_epochs` happened to be a
+    multiple of the interval.

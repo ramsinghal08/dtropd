@@ -37,6 +37,14 @@ distill:
   delta_base: 0.1
   gamma_attenuation: 1.0
   attenuation: continuous
+  # SPEC Sec. 10 / D1: this is a HEADLINE arm, so the attenuation is calibrated
+  # rather than guessed. beta is held at 0 for the calibration window and the
+  # warmup ramp starts after it, so the measurement is taken with the gate off.
+  calibration: warmup
+  calibration_quantile: 0.5
+  calibration_tail_quantile: 0.95
+  calibration_target_w: 0.5
+  radius_reference: fixed      # SPEC Sec. 10 / D5: running_quantile is an ablation
   kl_direction: reverse      # invariant I2 -- the only legal value
   radius_signal: nonstationarity   # invariant I1
   trust_batch: own           # invariant I3

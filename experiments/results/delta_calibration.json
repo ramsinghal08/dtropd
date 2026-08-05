@@ -1,26 +1,40 @@
+05:47:02 | INFO    | dtropd.run | calibration epoch 1/10
+05:47:04 | INFO    | dtropd.run | calibration epoch 2/10
+05:47:06 | INFO    | dtropd.run | calibration epoch 3/10
+05:47:08 | INFO    | dtropd.run | calibration epoch 4/10
+05:47:10 | INFO    | dtropd.run | calibration epoch 5/10
+05:47:12 | INFO    | dtropd.run | calibration epoch 6/10
+05:47:14 | INFO    | dtropd.run | calibration epoch 7/10
+05:47:16 | INFO    | dtropd.run | calibration epoch 8/10
+05:47:18 | INFO    | dtropd.run | calibration epoch 9/10
+05:47:20 | INFO    | dtropd.algorithms | calibrated attenuation at epoch 9 from 1320 observed edges: delta_base 0.1 -> 0.049277, gamma 1 -> 11.449
+05:47:20 | INFO    | dtropd.run | calibration epoch 10/10
 {
-  "config": "/home/user/dtropd/experiments/configs/dtropd_heterogeneous.yaml",
-  "epochs": 8,
-  "edges_sampled": 1056,
+  "procedure": "SPEC Sec. 10 / D1",
+  "source_config": "experiments/configs/dtropd_heterogeneous.yaml",
+  "seed": 0,
+  "epochs": 10,
+  "edges_sampled": 1320,
   "D_ij_percentiles": {
-    "p5": 0.00011873466974066105,
-    "p25": 0.011728023178875446,
-    "p50": 0.026208506897091866,
-    "p75": 0.03607606329023838,
-    "p95": 0.053029485046863556,
-    "p99": 0.06804120466113091
+    "p5": 0.00012557443551486358,
+    "p25": 0.01959396107122302,
+    "p50": 0.04927748627960682,
+    "p75": 0.08156228065490723,
+    "p95": 0.12042888253927231,
+    "p99": 0.15989488124847395
   },
-  "D_ij_mean": 0.025447106458531463,
-  "delta_i_mean_observed": 0.06913689515431554,
-  "current": {
+  "before": {
     "delta_base": 0.1,
     "gamma_attenuation": 1.0,
-    "w_at_median_D": 0.9873435497283936,
-    "attenuation_is_effectively_off": true
+    "w_at_median_D": 0.9765680432319641,
+    "gate_inert": true
   },
-  "suggested": {
-    "delta_base": 0.026208506897091866,
-    "gamma_attenuation": 26.137952093322856,
-    "rationale": "delta_base = q0.5 of observed D_ij so the radius sits inside the data; gamma chosen so an edge at the 95th percentile (D = 0.0530) is attenuated to w = 0.5."
+  "after": {
+    "delta_base": 0.04927748627960682,
+    "gamma_attenuation": 11.44872378373956,
+    "w_at_median_D": 0.7568367123603821,
+    "gate_inert": false
   }
 }
+05:47:20 | INFO    | dtropd.run | wrote calibrated config to experiments/configs/dtropd_heterogeneous_static.yaml
+05:47:20 | WARNING | dtropd.run | the source config's gate was inert (w=0.9766 at the median D_ij): results from it would have been NaiveDistill, not D-TrOPD.
