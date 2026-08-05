@@ -59,6 +59,9 @@ __all__ = [
     "build_plan",
     "run_sweep",
     "load_sweep_config",
+    "check_reward_spec_versions",
+    "check_manifest_reward_spec_versions",
+    "sweep_report",
 ]
 
 logger = get_logger("dtropd.sweep")
@@ -519,8 +522,45 @@ def collect_final_returns(manifest: dict[str, Any]) -> dict[str, dict[str, list[
     return out
 
 
+def check_manifest_reward_spec_versions(manifest: dict[str, Any]) -> dict[str, Any]:
+    """SPEC Sec. 12 / D13, enforced again at the artifact layer.
+
+    :func:`check_reward_spec_versions` guards the *plan*, but D13 binds "any
+    figure or table comparing algorithms", and not every figure comes from a
+    checked plan. ``run.py sweep --report-only`` reads a manifest off disk and
+    rebuilds the figure without calling :func:`run_sweep`, so ``preflight``
+    never runs; a manifest merged from two sweep directories, or written before
+    the config was edited, would render a cross-version comparison silently.
+
+    Environment-property runs are exempt, per the D13 exception -- for them the
+    environments are the subject rather than a confound.
+    """
+    versions = {
+        entry["reward_spec_version"]
+        for entry in manifest["runs"]
+        if entry.get("purpose", "algorithm") == "algorithm"
+        and "reward_spec_version" in entry
+    }
+    if len(versions) > 1:
+        detail = ", ".join(
+            f"{entry['arm']}={entry['reward_spec_version']}"
+            for entry in manifest["runs"]
+            if entry.get("purpose", "algorithm") == "algorithm"
+        )
+        raise SweepError(
+            "this manifest compares algorithms across reward spec versions, so "
+            f"no figure or table may be drawn from it: {detail}. SPEC Sec. 12 / "
+            "D13 allows versions to coexist but forbids an algorithm-performance "
+            "comparison from spanning them. Report each version separately, or "
+            "mark the cross-version runs purpose: environment_property."
+        )
+    return {"algorithm_arms_version": sorted(versions), "passed": True}
+
+
 def sweep_report(manifest: dict[str, Any], seed: int = 0) -> dict[str, Any]:
     """The D8 interaction, the D9 cost and per-arm IQM/CIs -- all from disk."""
+    # Refuse before doing any work, so an invalid comparison cannot half-render.
+    check_manifest_reward_spec_versions(manifest)
     blocks = collect_final_returns(manifest)
     per_arm = {
         condition: {

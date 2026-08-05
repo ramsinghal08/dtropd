@@ -581,3 +581,29 @@ environments themselves are the subject. D11(c)'s side-by-side decay probe on
 `v1` vs `v1-local` is such a measurement: it compares whether Assumption 2
 holds, not how algorithms perform. It is labelled **cross-version** wherever it
 appears.
+
+**Enforcement.** Four guards, because each clause of the rule can be broken
+independently:
+
+1. `check_reward_spec_versions` refuses a *plan* whose algorithm arms span
+   versions (the launcher guard the rule names).
+2. `check_manifest_reward_spec_versions` refuses to build a *report or figure*
+   from a manifest whose algorithm runs span versions, and runs before the
+   report touches disk. The launcher guard alone is not sufficient: D13 binds
+   "any figure or table", and `run.py sweep --report-only` rebuilds the figure
+   from a manifest on disk without going through `run_sweep`, so `preflight`
+   never executes. A manifest merged from two sweep directories, or written
+   before the config was edited, would otherwise render silently.
+3. `test_v1_reward_spec_is_frozen` pins `v1`'s rewards for a hand-placed
+   configuration. "Frozen" only means something if editing it fails loudly: a
+   change to `v1` silently invalidates every stored curve, calibration artifact
+   and H7 arm already denominated in it. A deliberate change is a *new* version,
+   which is the mechanism this decision exists to provide.
+4. `test_v1_local_is_used_only_by_the_h5_locality_condition` parses every
+   shipped config and refuses `v1-local` outside `h5_locality.yaml` -- the way
+   the scope restriction breaks in practice is someone reaching for the
+   localised reward in an unrelated sweep.
+
+The cross-version label is rendered onto the figure itself, not only into
+`report.json`, since a figure is where it is most likely to be read without the
+report open beside it.

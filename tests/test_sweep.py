@@ -112,6 +112,122 @@ def test_environment_property_arms_may_span_versions():
     assert result["passed"] and result["cross_version"]
 
 
+def _manifest(*runs: dict) -> dict:
+    """A manifest built by hand, as ``--report-only`` would find one on disk."""
+    return {"runs": list(runs), "completed": len(runs), "skipped": 0, "in_progress": False}
+
+
+def _run_entry(arm, algo, version, seed=0, purpose="algorithm", condition="heterogeneous"):
+    return {
+        "arm": arm,
+        "algo": algo,
+        "condition": condition,
+        "purpose": purpose,
+        "seed": seed,
+        "run_dir": f"/nonexistent/{arm}_{seed}",
+        "config_fingerprint": "x",
+        "reward_spec_version": version,
+        "status": "completed",
+    }
+
+
+def test_report_refuses_an_algorithm_comparison_spanning_versions():
+    """D13 binds the *figure and table*, not only the launcher.
+
+    ``run.py sweep --report-only`` reads a manifest off disk and rebuilds the
+    comparison figure without going through ``run_sweep``, so ``preflight`` --
+    and with it ``check_reward_spec_versions`` -- never runs. A manifest that
+    did not come from a checked plan (merged from two sweep directories, or
+    produced before the config was edited) would render a cross-version
+    comparison silently. The artifact-producing call has to refuse on its own.
+    """
+    manifest = _manifest(
+        _run_entry("dtropd", "dtropd", "v1"),
+        _run_entry("mappo", "mappo", "v1-local"),
+    )
+    with pytest.raises(SweepError, match="across reward spec versions"):
+        sweep_report(manifest)
+
+
+def test_report_allows_environment_property_arms_to_span_versions(tmp_path):
+    """The D13 exception survives the report-layer guard, and stays labelled."""
+    runs = []
+    for arm, version, purpose in (
+        ("ippo_v1", "v1", "algorithm"),
+        ("probe_v1", "v1", "environment_property"),
+        ("probe_local", "v1-local", "environment_property"),
+    ):
+        entry = _run_entry(arm, "ippo", version, purpose=purpose)
+        run_dir = tmp_path / arm
+        run_dir.mkdir()
+        (run_dir / "metrics.jsonl").write_text("")
+        entry["run_dir"] = str(run_dir)
+        runs.append(entry)
+
+    report = sweep_report(_manifest(*runs))
+    block = report["environment_property"]
+    assert block["cross_version"] is True
+    assert "CROSS-VERSION" in block["label"]
+
+
+def test_cross_version_figures_carry_the_label(tmp_path):
+    """D13: labelled cross-version *wherever it appears*, figures included.
+
+    A figure is where someone is most likely to read the measurement without
+    the report open beside them, so the label has to survive onto the canvas
+    rather than living only in ``report.json``.
+    """
+    from dtropd.plot import plot_comparison
+
+    report = {
+        "per_arm": {"heterogeneous": {"ippo": {"iqm": 1.0, "ci": {"lo": 0.5, "hi": 1.5}, "n_seeds": 2}}},
+        "conditions": ["heterogeneous"],
+        "environment_property": {
+            "cross_version": True,
+            "reward_spec_versions": ["v1", "v1-local"],
+            "label": "CROSS-VERSION environment-property measurement",
+        },
+    }
+    out = plot_comparison(report, tmp_path / "cross.png")
+    assert out.exists() and out.stat().st_size > 0
+
+    texts = _figure_texts(report, tmp_path / "probe.png")
+    assert any("CROSS-VERSION" in t for t in texts), (
+        "a cross-version figure rendered without the D13 label"
+    )
+    assert any("v1-local" in t for t in texts), "the label must name the versions"
+
+    # A single-version report must NOT be stamped -- the label has to mean
+    # something when it appears.
+    single = {k: v for k, v in report.items() if k != "environment_property"}
+    assert not any("CROSS-VERSION" in t for t in _figure_texts(single, tmp_path / "s.png"))
+
+
+def _figure_texts(report: dict, path: Path) -> list[str]:
+    """Render a comparison figure and return every string drawn on it.
+
+    ``plot_comparison`` closes the figure before returning, so the close is
+    suppressed for the duration of the call to inspect what was actually drawn.
+    """
+    from unittest.mock import patch
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    from dtropd.plot import plot_comparison
+
+    plt.close("all")
+    with patch.object(plt, "close"):
+        plot_comparison(report, path)
+    texts = [
+        t.get_text() for num in plt.get_fignums() for t in plt.figure(num).texts
+    ]
+    plt.close("all")
+    return texts
+
+
 # --------------------------------------------------------------------------- #
 # D6: one calibration per environment, shared by every arm in it
 # --------------------------------------------------------------------------- #
@@ -342,6 +458,77 @@ def _env(version: str, n: int = 6, closest: int = 3) -> CooperativeCaptureEnv:
     env.agent_pos = np.array([[2.0 + 0.3 * i, 0.0] for i in range(n)])
     env.agent_pos[closest] = np.array([0.01, 0.0])
     return env
+
+
+#: v1's rewards for the hand-placed configuration in ``_env``. D13's first
+#: sentence -- "v1 is frozen and unedited" -- only means something if editing it
+#: fails loudly, so the values are pinned here. Every stored curve, every
+#: calibration artifact and every H7 arm is denominated in this reward; a change
+#: to it silently invalidates all of them rather than announcing itself.
+V1_FROZEN_REWARDS = [
+    -4.136071339172461,
+    -4.2860713391724605,
+    -4.436071339172461,
+    -3.141071339172461,
+    -4.736071339172462,
+    -4.886071339172461,
+]
+
+
+def test_v1_reward_spec_is_frozen():
+    """SPEC Sec. 12 / D13: `v1` is frozen and unedited.
+
+    If this fails, the question is not "update the constants" -- it is whether
+    the edit was intended, because every result already denominated in `v1`
+    becomes incomparable to everything produced afterwards. A deliberate change
+    is a *new* reward spec version, which is the mechanism D13 exists to provide.
+    """
+    env = _env("v1", closest=3)
+    rewards, _ = env._rewards_and_info()
+    np.testing.assert_allclose(
+        rewards,
+        V1_FROZEN_REWARDS,
+        rtol=1e-12,
+        err_msg=(
+            "the v1 reward changed. D13 freezes v1: if this edit is intended, it "
+            "must be a new reward spec version, not a redefinition of v1, or "
+            "every stored v1 curve silently stops meaning what it meant."
+        ),
+    )
+
+
+def test_v1_local_is_used_only_by_the_h5_locality_condition():
+    """SPEC Sec. 12 / D13: `v1-local` is used ONLY by H5's locality condition.
+
+    Checked against the shipped configs rather than trusted, because the way
+    this constraint breaks is someone reaching for the localised reward in an
+    unrelated sweep and quietly making its arms incomparable to everything else.
+    """
+    def settings(node, trail=()):
+        """Every ``*reward_spec_version: <value>`` setting, comments excluded."""
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if str(key).endswith("reward_spec_version") and isinstance(value, str):
+                    yield ".".join(trail + (str(key),)), value
+                else:
+                    yield from settings(value, trail + (str(key),))
+        elif isinstance(node, list):
+            for i, item in enumerate(node):
+                yield from settings(item, trail + (str(i),))
+
+    offenders = {}
+    for path in sorted(CONFIGS.glob("*.yaml")):
+        if path.name == "h5_locality.yaml":
+            continue
+        found = [where for where, v in settings(yaml.safe_load(path.read_text()))
+                 if v == "v1-local"]
+        if found:
+            offenders[path.name] = found
+    assert not offenders, (
+        f"v1-local appears outside H5's locality condition: {offenders}. D13 "
+        "scopes it to that condition; anywhere else it makes a comparison span "
+        "reward spec versions."
+    )
 
 
 def test_v1_violates_assumption_2_and_v1_local_satisfies_it():

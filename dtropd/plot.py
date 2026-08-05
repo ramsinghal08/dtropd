@@ -188,7 +188,26 @@ def plot_comparison(
         )
         ax2.grid(alpha=0.3, axis="y")
 
-    fig.tight_layout()
+    # SPEC Sec. 12 / D13: an environment-property measurement that spans reward
+    # spec versions is allowed, but must be "labelled as cross-version wherever
+    # it appears" -- and a figure is where someone is most likely to read it
+    # without the report open beside them.
+    prop = report.get("environment_property") or {}
+    if prop.get("cross_version"):
+        versions = "/".join(prop.get("reward_spec_versions", []))
+        fig.text(
+            0.5,
+            0.005,
+            f"CROSS-VERSION ({versions}): environment-property measurement, "
+            "NOT an algorithm comparison (SPEC Sec. 12 / D13)",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+            color="tab:red",
+            weight="bold",
+        )
+
+    fig.tight_layout(rect=(0, 0.035, 1, 1) if prop.get("cross_version") else None)
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=150)
