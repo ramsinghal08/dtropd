@@ -7,7 +7,9 @@ Examples
     python run.py train --config experiments/configs/h7_ippo_homogeneous.yaml --seeds 3
     python run.py eval  --config experiments/configs/smoke.yaml --checkpoint runs/.../checkpoint_final.pt
     python run.py plot  --runs runs/ippo_seed0 runs/ippo_seed1 --out figures/curve.png
-    python run.py validate --config experiments/configs/smoke.yaml
+    python run.py validate  --config experiments/configs/smoke.yaml
+    python run.py calibrate --config experiments/configs/dtropd_heterogeneous.yaml \
+        --out experiments/configs/dtropd_heterogeneous_static.yaml
 """
 
 from __future__ import annotations
@@ -17,6 +19,9 @@ import json
 import sys
 from pathlib import Path
 from typing import Any, Sequence
+
+import numpy as np
+import torch
 
 from .config import Config, ConfigError, load_config
 from .utils import configure_logging, get_logger
@@ -89,6 +94,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_val = sub.add_parser("validate", help="load and validate a config, then print it")
     add_common(p_val)
 
+    p_cal = sub.add_parser(
+        "calibrate",
+        help="measure the D_ij distribution and emit a calibrated config (SPEC D1)",
+    )
+    add_common(p_cal)
+    p_cal.add_argument("--out", type=str, default=None, help="write the calibrated YAML here")
+    p_cal.add_argument("--epochs", type=int, default=10, help="calibration window length")
+    p_cal.add_argument("--seed", type=int, default=None)
+
     p_smoke = sub.add_parser(
         "smoke", help="2-agent CPU smoke run (SPEC Sec. 9 rule 6: always works)"
     )
@@ -134,6 +148,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_plot(args)
         if args.command == "validate":
             return _cmd_validate(args)
+        if args.command == "calibrate":
+            return _cmd_calibrate(args)
         if args.command == "smoke":
             return _cmd_smoke(args)
     except ConfigError as exc:
@@ -181,6 +197,114 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     for w in warnings_out:
         logger.warning("%s", w)
     print(f"# validation: OK ({len(warnings_out)} warning(s))")
+    return 0
+
+
+def _cmd_calibrate(args: argparse.Namespace) -> int:
+    """SPEC Sec. 10 / D1: the calibration procedure as a single command.
+
+    Runs the real training loop with ``distill.calibration: warmup`` and the
+    window set to ``--epochs``, so the offline command and the in-run path
+    execute *the same code*: they cannot drift apart. beta is held at exactly 0
+    for the whole window, so the measurement is taken with the gate inactive.
+    """
+    import copy as _copy
+
+    import yaml
+
+    from .algorithms import build_algorithm, trust_weight
+    from .env import SyncVectorEnv
+    from .utils import derive_seed
+
+    cfg = _load(args)
+    seed = args.seed if args.seed is not None else cfg.train.seed
+    cfg.train.algo = "dtropd"
+    cfg.distill.enabled = True
+    cfg.distill.calibration = "warmup"
+    cfg.distill.warmup_epochs = args.epochs
+    cfg.train.total_epochs = max(cfg.train.total_epochs, args.epochs)
+    cfg.validate(emit=False)
+
+    algo = build_algorithm(cfg, seed=seed, device=cfg.train.device)
+    vec = SyncVectorEnv(cfg.env, cfg.train.num_envs, seed=derive_seed(seed, "env"))
+    for epoch in range(args.epochs):
+        algo.epoch = epoch
+        algo.on_epoch_start()
+        algo.collect_rollout(vec)
+        algo.update()
+        logger.info("calibration epoch %d/%d", epoch + 1, args.epochs)
+
+    if not algo._calibrated:
+        logger.error("calibration produced no samples (is the graph empty?)")
+        return 4
+
+    samples = algo._calibration_samples
+    percentiles = {
+        f"p{int(q * 100)}": float(np.quantile(samples, q))
+        for q in (0.05, 0.25, 0.5, 0.75, 0.95, 0.99)
+    }
+    before = float(
+        trust_weight(
+            torch.tensor(percentiles["p50"]),
+            cfg.distill.delta_base,
+            cfg.distill.gamma_attenuation,
+            cfg.distill.attenuation,
+        )
+    )
+    after = float(
+        trust_weight(
+            torch.tensor(percentiles["p50"]),
+            algo.delta_base,
+            algo.gamma_attenuation,
+            cfg.distill.attenuation,
+        )
+    )
+
+    out_cfg = _copy.deepcopy(cfg)
+    out_cfg.distill.delta_base = algo.delta_base
+    out_cfg.distill.gamma_attenuation = algo.gamma_attenuation
+    out_cfg.distill.calibration = "none"  # the values are baked in
+    out_cfg.distill.warmup_epochs = None
+    out_cfg.train.total_epochs = Config().train.total_epochs
+    out_cfg.notes = (
+        f"{cfg.notes} | calibrated per SPEC Sec. 10 / D1 from {len(samples)} observed "
+        f"edges over {args.epochs} epochs (seed {seed}): median D_ij "
+        f"{percentiles['p50']:.5g}, p95 {percentiles['p95']:.5g}; "
+        f"delta_base {cfg.distill.delta_base:.5g} -> {algo.delta_base:.5g}, "
+        f"gamma {cfg.distill.gamma_attenuation:.5g} -> {algo.gamma_attenuation:.5g}"
+    ).strip(" |")
+
+    report = {
+        "procedure": "SPEC Sec. 10 / D1",
+        "source_config": args.config,
+        "seed": seed,
+        "epochs": args.epochs,
+        "edges_sampled": len(samples),
+        "D_ij_percentiles": percentiles,
+        "before": {
+            "delta_base": cfg.distill.delta_base,
+            "gamma_attenuation": cfg.distill.gamma_attenuation,
+            "w_at_median_D": before,
+            "gate_inert": bool(before > 0.95),
+        },
+        "after": {
+            "delta_base": algo.delta_base,
+            "gamma_attenuation": algo.gamma_attenuation,
+            "w_at_median_D": after,
+            "gate_inert": bool(after > 0.95),
+        },
+    }
+    print(json.dumps(report, indent=2))
+    if args.out:
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.out).write_text(yaml.safe_dump(out_cfg.to_dict(), sort_keys=False))
+        logger.info("wrote calibrated config to %s", args.out)
+    if report["before"]["gate_inert"]:
+        logger.warning(
+            "the source config's gate was inert (w=%.4f at the median D_ij): "
+            "results from it would have been NaiveDistill, not D-TrOPD.",
+            before,
+        )
     return 0
 
 
