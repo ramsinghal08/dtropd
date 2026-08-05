@@ -70,16 +70,24 @@ class RolloutBuffer:
         n_agents: int,
         obs_dim: int,
         act_dim: int,
+        critic_obs_dim: int | None = None,
     ):
         self.steps = int(steps)
         self.num_envs = int(num_envs)
         self.n_agents = int(n_agents)
         self.obs_dim = int(obs_dim)
         self.act_dim = int(act_dim)
+        # The critic's input may be wider than the actor's: MAPPO's centralised
+        # critic sees the concatenated observations of every agent. It is a
+        # separate array rather than a reshape so that the actor's own-rollout
+        # slice stays unambiguous (invariant I3 is easier to keep than to prove).
+        self.critic_obs_dim = int(critic_obs_dim if critic_obs_dim is not None else obs_dim)
 
         shape = (self.steps, self.num_envs, self.n_agents)
         self.obs = np.zeros((*shape, obs_dim), dtype=np.float32)
         self.bootstrap_obs = np.zeros((*shape, obs_dim), dtype=np.float32)
+        self.critic_obs = np.zeros((*shape, self.critic_obs_dim), dtype=np.float32)
+        self.bootstrap_critic_obs = np.zeros((*shape, self.critic_obs_dim), dtype=np.float32)
         self.latent = np.zeros((*shape, act_dim), dtype=np.float32)
         self.mu = np.zeros((*shape, act_dim), dtype=np.float32)
         self.log_std = np.zeros((*shape, act_dim), dtype=np.float32)
@@ -115,10 +123,16 @@ class RolloutBuffer:
         terminated: np.ndarray,
         truncated: np.ndarray,
         bootstrap_obs: np.ndarray,
+        critic_obs: np.ndarray | None = None,
+        bootstrap_critic_obs: np.ndarray | None = None,
     ) -> None:
         if self.full:
             raise RuntimeError("RolloutBuffer is full")
         t = self._ptr
+        self.critic_obs[t] = obs if critic_obs is None else critic_obs
+        self.bootstrap_critic_obs[t] = (
+            bootstrap_obs if bootstrap_critic_obs is None else bootstrap_critic_obs
+        )
         self.obs[t] = obs
         self.latent[t] = latent
         self.mu[t] = mu
@@ -163,6 +177,7 @@ class RolloutBuffer:
 
         return {
             "obs": flat(self.obs),
+            "critic_obs": flat(self.critic_obs),
             "latent": flat(self.latent),
             "mu": flat(self.mu),
             "log_std": flat(self.log_std),

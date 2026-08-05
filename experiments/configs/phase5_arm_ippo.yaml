@@ -1,0 +1,56 @@
+notes: 'Phase 5 sweep arm: ippo. Calibration PINNED to the shared artifact (SPEC Sec.
+  11 / D6); no arm re-measures it.'
+env:
+  n_agents: 8
+  n_targets: 2
+  capture_group_size: 3
+  max_cycles: 25
+  heterogeneous: true
+  local_ratio: 0.5
+  reward_spec_version: v1
+network:
+  hidden_sizes:
+  - 64
+  - 64
+ppo:
+  lr: 0.001
+  inner_epochs: 4
+  num_minibatches: 4
+  kl_early_stop: 0.02
+distill:
+  enabled: false
+  beta_max: 0.05
+  warmup_fraction: 0.1
+  kappa: 100.0
+  delta_base: 0.1
+  gamma_attenuation: 1.0
+  attenuation: continuous
+  calibration: file
+  calibration_epochs: 8
+  calibration_pool_epochs: 2
+  radius_reference: fixed
+  calibration_file: experiments/calibrations/phase5_heterogeneous.json
+instrument:
+  metrics_schema_version: v1
+  per_edge_gradients: true
+  per_edge_gradient_interval: 1
+  per_edge_detail: true
+  surrogate_gain: true
+  decay_probe: true
+  decay_probe_interval: 10
+  decay_probe_agents: 3
+  decay_probe_episodes: 4
+  consensus_pull: true
+  per_zone_detail: true
+graph:
+  topology: fixed_degree
+  degree: 4
+train:
+  algo: ippo
+  total_epochs: 24
+  num_envs: 16
+  seed: 0
+  device: cpu
+  eval_interval: 12
+  eval_episodes: 8
+  log_dir: runs/phase5_sweep

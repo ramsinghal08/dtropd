@@ -84,13 +84,13 @@ def test_run_py_validate_default_config():
     assert "validation: OK" in proc.stdout
 
 
-def test_unimplemented_algorithms_fail_loudly():
-    from dtropd.algorithms import build_algorithm
+def test_unknown_algorithm_fails_loudly():
+    from dtropd.algorithms import ALGORITHMS, build_algorithm
+
+    # Every algorithm SPEC Sec. 5 names is now implemented.
+    assert set(ALGORITHMS) == {"ippo", "dtropd", "naive_distill", "mappo", "happo"}
 
     cfg = Config()
-    cfg.train.algo = "mappo"
-    with pytest.raises(NotImplementedError, match="Phase 4"):
-        build_algorithm(cfg, seed=0)
     cfg.train.algo = "nope"
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="unknown algorithm"):
         build_algorithm(cfg, seed=0)

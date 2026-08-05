@@ -29,6 +29,7 @@ __all__ = [
     "NetworkConfig",
     "PPOConfig",
     "DistillConfig",
+    "InstrumentConfig",
     "GraphConfig",
     "TrainConfig",
     "Config",
@@ -71,6 +72,11 @@ class EnvConfig:
     capture_group_size: int = 3
     capture_radius: float = 0.3
     max_cycles: int = 50
+
+    # SPEC Sec. 10 / D3: the reward definition is frozen. The environment
+    # asserts that it implements this version; any change to the reward shape
+    # requires a version bump and invalidates every stored curve.
+    reward_spec_version: str = "v1"
 
     # --- reward accounting -------------------------------------------------
     shaping_weight: float = 1.0
@@ -139,6 +145,8 @@ class EnvConfig:
             )
         if self.max_cycles < 1:
             raise ConfigError("env.max_cycles must be >= 1")
+        if not isinstance(self.reward_spec_version, str) or not self.reward_spec_version:
+            raise ConfigError("env.reward_spec_version must be a non-empty string")
         return warnings_out
 
     @property
@@ -263,6 +271,28 @@ class DistillConfig:
     delta_base: float = 0.1
     gamma_attenuation: float = 1.0  # gamma in w_ij = exp(-gamma * [...])
     attenuation: str = "continuous"  # continuous | hard_switch | hard_cutoff
+    # SPEC Sec. 10 / D1: calibration is a documented procedure, not a constant.
+    # "warmup" runs it inside training during the beta-warmup window, where
+    # beta = 0 so the measurement cannot influence the policies it measures.
+    # SPEC Sec. 11 / D6 -- the calibration rule is fixed and pre-registered:
+    #   * "warmup" measures it in-run over a hard beta = 0 prefix;
+    #   * "file"   pins it from a shared calibration artifact, which is what
+    #              every arm of a comparison must do.
+    calibration: str = "none"  # none | warmup | file
+    calibration_file: str | None = None  # the shared artifact (D6)
+    #: Length of the beta = 0 calibration window, in epochs. THIS NUMBER IS
+    #: ARBITRARY (SPEC Sec. 11 / D6 says so in those words). It is fixed so it
+    #: is not a researcher degree of freedom; its influence is measured by D7.
+    calibration_epochs: int = 8
+    #: D_ij is pooled over the FINAL `calibration_pool_epochs` epochs of the
+    #: window. Pooling damps the drift relative to a single-epoch reading.
+    calibration_pool_epochs: int = 2
+    calibration_quantile: float = 0.5  # delta_base := this quantile of D_ij
+    calibration_tail_quantile: float = 0.95  # the edge pinned to target_w
+    calibration_target_w: float = 0.5
+    # SPEC Sec. 10 / D5: adaptive radius reference is an ablation arm.
+    radius_reference: str = "fixed"  # fixed | running_quantile
+    radius_reference_window: int = 10  # epochs of D_ij history for the quantile
     kl_direction: str = "reverse"  # invariant I2: reverse everywhere, always
     radius_signal: str = "nonstationarity"  # nonstationarity | value_variance | fixed
     trust_batch: str = "own"  # invariant I3: own | pooled
@@ -273,6 +303,8 @@ class DistillConfig:
     krum_byzantine: int = 1
 
     _ATTENUATIONS = ("continuous", "hard_switch", "hard_cutoff")
+    _CALIBRATIONS = ("none", "warmup", "file")
+    _RADIUS_REFERENCES = ("fixed", "running_quantile")
     _RADIUS_SIGNALS = ("nonstationarity", "value_variance", "fixed")
     _TRUST_BATCHES = ("own", "pooled")
     _AGGREGATIONS = ("sum", "trimmed_mean", "geometric_median", "krum")
@@ -319,6 +351,35 @@ class DistillConfig:
             )
         if self.neighbor_selection == "top_k" and not self.top_k:
             raise ConfigError("distill.top_k must be set when neighbor_selection='top_k'")
+        if self.calibration not in self._CALIBRATIONS:
+            raise ConfigError(f"distill.calibration must be one of {self._CALIBRATIONS}")
+        if self.calibration == "file" and not self.calibration_file:
+            raise ConfigError(
+                "distill.calibration='file' requires distill.calibration_file "
+                "(SPEC Sec. 11 / D6: every arm loads the same artifact)"
+            )
+        if self.calibration_epochs < 1:
+            raise ConfigError("distill.calibration_epochs must be >= 1")
+        if not 1 <= self.calibration_pool_epochs <= self.calibration_epochs:
+            raise ConfigError(
+                "distill.calibration_pool_epochs must lie in "
+                f"[1, calibration_epochs={self.calibration_epochs}]"
+            )
+        if self.radius_reference not in self._RADIUS_REFERENCES:
+            raise ConfigError(
+                f"distill.radius_reference must be one of {self._RADIUS_REFERENCES}"
+            )
+        for name in ("calibration_quantile", "calibration_tail_quantile"):
+            if not 0.0 < getattr(self, name) < 1.0:
+                raise ConfigError(f"distill.{name} must lie in (0, 1)")
+        if self.calibration_tail_quantile <= self.calibration_quantile:
+            raise ConfigError(
+                "distill.calibration_tail_quantile must exceed calibration_quantile"
+            )
+        if not 0.0 < self.calibration_target_w < 1.0:
+            raise ConfigError("distill.calibration_target_w must lie in (0, 1)")
+        if self.radius_reference_window < 1:
+            raise ConfigError("distill.radius_reference_window must be >= 1")
         if self.beta_max < 0.0:
             raise ConfigError("distill.beta_max must be >= 0")
         if self.delta_base <= 0.0:
@@ -352,6 +413,14 @@ class DistillConfig:
             warnings_out.append(
                 "distill.neighbor_selection='top_k' reintroduces a discontinuity at "
                 "the selection boundary (SPEC Sec. 2.3); the default is 'all'."
+            )
+        if self.radius_reference == "running_quantile":
+            warnings_out.append(
+                "distill.radius_reference='running_quantile' is the D5 ablation arm. "
+                "It is NOT what the theory states: a radius defined from a running "
+                "quantile of D_ij is no longer a fixed function of the agent's own "
+                "nonstationarity, so the Sec. 2.2 scale-invariance proposition would "
+                "have to be re-derived before reporting it as D-TrOPD."
             )
         if self.enabled and self.beta_max > 0.0 and self.warmup_fraction == 0.0 and (
             self.warmup_epochs in (None, 0)
@@ -392,6 +461,90 @@ class DistillConfig:
         if strict:
             raise ConfigError(message)
         return [message]
+
+
+# --------------------------------------------------------------------------- #
+# Instrumentation (Phase 5)
+# --------------------------------------------------------------------------- #
+
+
+@dataclass
+class InstrumentConfig:
+    """What gets logged, and how often (SPEC Sec. 5 Phase 5).
+
+    The acceptance bar is that a *single* training run's metrics file supports
+    every H1-H7 measurement without re-running, so these default to on. The
+    expensive ones (per-edge gradients, the decay probe) are interval-gated
+    rather than disabled, because a measurement that is off by default is a
+    measurement nobody has.
+    """
+
+    #: Bumping this invalidates stored curves, exactly like reward_spec_version.
+    metrics_schema_version: str = "v1"
+
+    #: SPEC Sec. 11: log distributions, not means.
+    quantiles: list[float] = field(
+        default_factory=lambda: [0.05, 0.25, 0.5, 0.75, 0.95]
+    )
+
+    #: H1: per-edge social gradient norms and sign-flip counts, bucketed by
+    #: |D_ij - delta_i|. Costs one backward pass per edge, so it is interval-gated.
+    per_edge_gradients: bool = True
+    per_edge_gradient_interval: int = 1
+    sign_flip_buckets: list[float] = field(
+        default_factory=lambda: [0.0, 0.005, 0.01, 0.02, 0.05, 0.1]
+    )
+
+    #: H4/H5: surrogate gain vs realised improvement per round.
+    surrogate_gain: bool = True
+
+    #: H5 second measurement: the Assumption-2 decay probe.
+    decay_probe: bool = True
+    decay_probe_interval: int = 25
+    decay_probe_agents: int = 3
+    decay_probe_episodes: int = 4
+    decay_probe_scale: float = 0.1
+
+    #: D9: the consensus-pull cost.
+    consensus_pull: bool = True
+
+    #: Per-zone returns / captures / collisions.
+    per_zone_detail: bool = True
+
+    #: Full per-edge rows (D_ij, w_ij, sigma_i, sigma_j, grad norm) each epoch.
+    per_edge_detail: bool = True
+
+    def validate(self) -> list[str]:
+        warnings_out: list[str] = []
+        if not self.metrics_schema_version:
+            raise ConfigError("instrument.metrics_schema_version must be non-empty")
+        if not self.quantiles or not all(0.0 < q < 1.0 for q in self.quantiles):
+            raise ConfigError("instrument.quantiles must lie in (0, 1)")
+        if self.per_edge_gradient_interval < 1:
+            raise ConfigError("instrument.per_edge_gradient_interval must be >= 1")
+        if self.decay_probe_interval < 1:
+            raise ConfigError("instrument.decay_probe_interval must be >= 1")
+        if self.decay_probe_agents < 1:
+            raise ConfigError("instrument.decay_probe_agents must be >= 1")
+        if self.decay_probe_episodes < 1:
+            raise ConfigError("instrument.decay_probe_episodes must be >= 1")
+        if self.decay_probe_scale <= 0.0:
+            raise ConfigError("instrument.decay_probe_scale must be > 0")
+        if len(self.sign_flip_buckets) < 2:
+            raise ConfigError("instrument.sign_flip_buckets needs at least 2 edges")
+        if list(self.sign_flip_buckets) != sorted(self.sign_flip_buckets):
+            raise ConfigError("instrument.sign_flip_buckets must be increasing")
+        if not self.per_edge_gradients:
+            warnings_out.append(
+                "instrument.per_edge_gradients is off: H1's sign-flip measurement "
+                "cannot be computed from the resulting metrics file."
+            )
+        if not self.decay_probe:
+            warnings_out.append(
+                "instrument.decay_probe is off: H5's decay-assumption measurement "
+                "cannot be computed from the resulting metrics file."
+            )
+        return warnings_out
 
 
 # --------------------------------------------------------------------------- #
@@ -471,6 +624,7 @@ class Config:
     network: NetworkConfig = field(default_factory=NetworkConfig)
     ppo: PPOConfig = field(default_factory=PPOConfig)
     distill: DistillConfig = field(default_factory=DistillConfig)
+    instrument: InstrumentConfig = field(default_factory=InstrumentConfig)
     graph: GraphConfig = field(default_factory=GraphConfig)
     train: TrainConfig = field(default_factory=TrainConfig)
     notes: str = ""
@@ -495,6 +649,7 @@ class Config:
             f"distill: {m}"
             for m in self.distill.validate(self.ppo.kl_early_stop, strict=strict)
         ]
+        msgs += [f"instrument: {m}" for m in self.instrument.validate()]
         msgs += [f"graph: {m}" for m in self.graph.validate(self.env.n_agents)]
         msgs += [f"train: {m}" for m in self.train.validate()]
 
