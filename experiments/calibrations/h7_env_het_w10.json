@@ -1,0 +1,33 @@
+{
+  "delta_base": 0.09278636425733566,
+  "gamma_attenuation": 9.474790771356627,
+  "window_epochs": 10,
+  "pooled_epochs": [
+    8,
+    9
+  ],
+  "pool_size": 2,
+  "edge_count": 264,
+  "quantiles": {
+    "p05": 0.056134145706892014,
+    "p10": 0.06271111667156219,
+    "p25": 0.07744208350777626,
+    "p50": 0.09278636425733566,
+    "p75": 0.10859747231006622,
+    "p90": 0.1324406534433365,
+    "p95": 0.14771144092082977,
+    "p99": 0.191244701743126
+  },
+  "quantile_definition": "delta_base = q0.5 of D_ij pooled over the final 2 epoch(s) of a 10-epoch beta=0 window; gamma set so a q0.95 edge attenuates to w = 0.5 (SPEC Sec. 11 / D6)",
+  "reward_spec_version": "v1",
+  "git_commit": "543c81512f4d51a23e24ab90ee59be31d548600e",
+  "env_fingerprint": "d6d1998b2a14da16",
+  "created_at": "2026-08-05T13:33:17+0000",
+  "seed": 0,
+  "source_config": "experiments/configs/h7_env_het.yaml",
+  "note": "measured in-run (distill.calibration=warmup)",
+  "calibration_target_w": 0.5,
+  "tail_quantile": 0.95,
+  "center_quantile": 0.5,
+  "calibration_id": "2d084107b296b8f9"
+}
