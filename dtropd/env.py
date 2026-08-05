@@ -384,7 +384,17 @@ class CooperativeCaptureEnv(_ParallelEnvBase):
         rewards = (1.0 - cfg.local_ratio) * team + cfg.local_ratio * local
 
         zones = self.zone_ids()
+        n_zones = len(ZoneKind.NAMES)
+        collisions_by_zone = np.zeros(n_zones, dtype=np.int64)
+        agents_by_zone = np.zeros(n_zones, dtype=np.int64)
+        for z in range(n_zones):
+            sel = zones == z
+            agents_by_zone[z] = int(sel.sum())
+            if np.any(sel):
+                collisions_by_zone[z] = int(per_agent_collisions[sel].sum())
         info = {
+            "collisions_by_zone": collisions_by_zone,
+            "agents_by_zone": agents_by_zone,
             "team_reward": team,
             "local_rewards": local,
             "captures": int(captured.sum()),
@@ -465,6 +475,8 @@ class SyncVectorEnv:
         self._episode_returns = np.zeros((self.num_envs, self.n_agents))
         self._episode_zone_returns = np.zeros((self.num_envs, len(ZoneKind.NAMES)))
         self._episode_captures = np.zeros(self.num_envs)
+        self._episode_collisions_by_zone = np.zeros((self.num_envs, len(ZoneKind.NAMES)))
+        self._episode_steps_by_zone = np.zeros((self.num_envs, len(ZoneKind.NAMES)))
         self._episode_length = np.zeros(self.num_envs, dtype=np.int64)
 
     def reset(self, seed: int | None = None) -> np.ndarray:
@@ -475,6 +487,8 @@ class SyncVectorEnv:
         self._episode_returns[:] = 0.0
         self._episode_zone_returns[:] = 0.0
         self._episode_captures[:] = 0.0
+        self._episode_collisions_by_zone[:] = 0.0
+        self._episode_steps_by_zone[:] = 0.0
         self._episode_length[:] = 0
         return np.stack(obs)
 
@@ -494,6 +508,8 @@ class SyncVectorEnv:
             truncated[i] = trunc
             self._episode_returns[i] += r
             self._episode_captures[i] += info["captures"]
+            self._episode_collisions_by_zone[i] += info["collisions_by_zone"]
+            self._episode_steps_by_zone[i] += info["agents_by_zone"]
             self._episode_length[i] += 1
             zones = info["zones"]
             for z in range(len(ZoneKind.NAMES)):
@@ -508,10 +524,14 @@ class SyncVectorEnv:
                     "captures": float(self._episode_captures[i]),
                     "length": int(self._episode_length[i]),
                     "zone_returns": self._episode_zone_returns[i].copy(),
+                    "zone_collisions": self._episode_collisions_by_zone[i].copy(),
+                    "zone_agent_steps": self._episode_steps_by_zone[i].copy(),
                 }
                 self._episode_returns[i] = 0.0
                 self._episode_zone_returns[i] = 0.0
                 self._episode_captures[i] = 0.0
+                self._episode_collisions_by_zone[i] = 0.0
+                self._episode_steps_by_zone[i] = 0.0
                 self._episode_length[i] = 0
                 o = env.reset_array()
             obs[i] = o

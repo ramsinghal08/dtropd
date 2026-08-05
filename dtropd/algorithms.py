@@ -26,12 +26,18 @@ import torch.nn as nn
 from torch import Tensor
 
 from .buffer import RolloutBuffer
+from .calibration import CalibrationError, CalibrationRecord, env_fingerprint
 from .config import Config, ConfigError, DistillConfig
 from .env import SyncVectorEnv, ZoneKind
 from .kl import gaussian_kl, mean_gaussian_kl
 from .networks import ActorCritic, TanhGaussianActor, parameter_bytes
+from .instrumentation import (
+    SignFlipTracker,
+    pairwise_policy_dispersion,
+    quantiles,
+)
 from .robust import aggregate
-from .utils import RunningMeanStd, derive_seed, explained_variance, get_logger
+from .utils import RunningMeanStd, derive_seed, explained_variance, get_logger, git_commit
 
 __all__ = [
     "BaseAlgorithm",
@@ -145,6 +151,29 @@ class BaseAlgorithm(abc.ABC):
         )
         self.snapshot_bytes = parameter_bytes(self.agents[0].actor)
 
+        # SPEC Sec. 11 / D6: every arm in a comparison declares the calibration
+        # artifact that comparison used -- including arms that do not consume a
+        # delta_base (NaiveDistill has no radius, per D4; IPPO has no social
+        # path at all). Declaring it is what makes assert_shared_calibration()
+        # able to refuse a mixed sweep.
+        self.calibration_record: CalibrationRecord | None = None
+        if cfg.distill.calibration_file:
+            self.calibration_record = CalibrationRecord.load(cfg.distill.calibration_file)
+            expected = env_fingerprint(cfg.env)
+            if self.calibration_record.env_fingerprint != expected:
+                raise CalibrationError(
+                    f"calibration artifact {cfg.distill.calibration_file} was measured "
+                    "on a different environment configuration "
+                    f"({self.calibration_record.env_fingerprint} != {expected}). "
+                    "Calibration is per environment configuration (SPEC Sec. 11 / D6)."
+                )
+            if self.calibration_record.reward_spec_version != cfg.env.reward_spec_version:
+                raise CalibrationError(
+                    "calibration artifact was measured under reward_spec_version "
+                    f"{self.calibration_record.reward_spec_version!r}, this run uses "
+                    f"{cfg.env.reward_spec_version!r}."
+                )
+
         self.buffer = RolloutBuffer(
             cfg.steps_per_env,
             cfg.train.num_envs,
@@ -200,6 +229,8 @@ class BaseAlgorithm(abc.ABC):
         episode_returns: list[float] = []
         episode_captures: list[float] = []
         zone_returns: list[np.ndarray] = []
+        zone_collisions: list[np.ndarray] = []
+        zone_agent_steps: list[np.ndarray] = []
         step_rewards: list[float] = []
         collisions: list[float] = []
 
@@ -244,6 +275,8 @@ class BaseAlgorithm(abc.ABC):
                     episode_returns.append(ep["return"])
                     episode_captures.append(ep["captures"])
                     zone_returns.append(ep["zone_returns"])
+                    zone_collisions.append(ep["zone_collisions"])
+                    zone_agent_steps.append(ep["zone_agent_steps"])
 
         self._fill_values()
         buf.compute_returns(cfg.ppo.gamma, cfg.ppo.gae_lambda)
@@ -260,6 +293,12 @@ class BaseAlgorithm(abc.ABC):
             zr = np.stack(zone_returns).mean(axis=0)
             for z, zname in enumerate(ZoneKind.NAMES):
                 stats[f"zone_return/{zname}"] = float(zr[z])
+        if zone_collisions:
+            zc = np.stack(zone_collisions).mean(axis=0)
+            za = np.stack(zone_agent_steps).mean(axis=0)
+            for z, zname in enumerate(ZoneKind.NAMES):
+                stats[f"zone_collisions/{zname}"] = float(zc[z])
+                stats[f"zone_agent_steps/{zname}"] = float(za[z])
         return stats
 
     @torch.no_grad()
@@ -282,6 +321,35 @@ class BaseAlgorithm(abc.ABC):
             buf.next_value[:, :, i] = self._denormalize_value(
                 i, ac.critic(nxt).cpu().numpy()
             ).reshape(t, k)
+
+    # -- Phase 5 instrumentation shared by every algorithm --------------------- #
+
+    def policy_dispersion(self, probe_size: int = 256) -> np.ndarray:
+        """Pairwise policy divergence across the swarm on a shared probe batch.
+
+        D9's consensus measure. Computed identically for every algorithm so the
+        distillation arms have an uncontaminated IPPO control. This is a
+        diagnostic on a *shared* batch and is never used as a trust signal, so
+        it does not touch invariant I3.
+        """
+        obs = self.buffer.obs[:, :, 0].reshape(-1, self.obs_dim)
+        take = min(probe_size, obs.shape[0])
+        probe = torch.as_tensor(obs[:take], device=self.device)
+        return pairwise_policy_dispersion([ac.actor for ac in self.agents], probe)
+
+    def compute_accounting(self) -> dict[str, Any]:
+        """Compute cost of one epoch (SPEC Sec. 7: report compute, not just wall-clock)."""
+        cfg = self.cfg.ppo
+        params = sum(p.numel() for ac in self.agents for p in ac.parameters())
+        return {
+            "compute/env_steps": self.buffer.batch_size,
+            "compute/agent_steps": self.buffer.batch_size * self.n_agents,
+            "compute/gradient_steps": self.n_agents * cfg.inner_epochs * cfg.num_minibatches,
+            "compute/parameters": params,
+            "compute/actor_parameters": sum(
+                p.numel() for ac in self.agents for p in ac.policy_parameters()
+            ),
+        }
 
     def _denormalize_value(self, agent: int, value: np.ndarray) -> np.ndarray:
         """Map a critic output back into reward units."""
@@ -504,7 +572,22 @@ class IPPO(BaseAlgorithm):
             _, log_std_final = ac.actor(obs[:1])
             mean_sigma = float(torch.exp(log_std_final).mean())
 
+        # H4/H5: the surrogate's predicted improvement for this agent, on its own
+        # rollout, in reward units (raw advantages, not the normalised ones the
+        # update used). The analysis pairs it with the realised change in return
+        # to get the simultaneity penalty.
+        surrogate_gain = float("nan")
+        if self.cfg.instrument.surrogate_gain:
+            with torch.no_grad():
+                raw_adv = data["advantage"]
+                out_final = ac.actor.evaluate_latent(obs, latent)
+                ratio_final = torch.exp(out_final["log_prob"] - old_log_prob)
+                surrogate_gain = float(
+                    (ratio_final * raw_adv).mean() - raw_adv.mean()
+                )
+
         return {
+            "surrogate_gain": surrogate_gain,
             "policy_loss": float(np.mean(policy_losses)),
             "value_loss": float(np.mean(value_losses)),
             "entropy": float(np.mean(entropies)),
@@ -822,6 +905,11 @@ class SnapshotDistillBase(IPPO):
         self.epoch_snapshot_bytes = 0
         self.total_snapshot_bytes = 0
 
+        # Per-edge instrumentation state (Phase 5 / H1).
+        self._sign_flips = SignFlipTracker(cfg.instrument.sign_flip_buckets)
+        self._edge_rows: list[dict[str, Any]] = []
+        self._consensus: dict[str, Any] = {}
+
     # -- SPEC Sec. 2.1 step 1: broadcast frozen snapshots ----------------------- #
 
     @staticmethod
@@ -948,6 +1036,97 @@ class SnapshotDistillBase(IPPO):
     def _prepare_epoch(self, agent_idx: int, data: dict[str, Tensor]) -> TeacherBundle:
         return self._teacher_bundle(agent_idx, data)
 
+    # -- Phase 5: per-edge gradients, sign flips, consensus pull ---------------- #
+
+    def _edge_gap(self, agent_idx: int, edge: int) -> float:
+        """``|D_ij - delta_i|`` for H1's bucketing. NaN where there is no gate.
+
+        NaiveDistill has neither ``D_ij`` nor ``delta_i`` (SPEC Sec. 10 / D4),
+        so its edges are recorded unbucketed rather than being given a radius
+        they must not have.
+        """
+        return float("nan")
+
+    def _instrument_edges(self, agent_idx: int, ac: ActorCritic) -> None:
+        """One extra forward/backward set per edge, outside the training loop.
+
+        Deliberately *not* fused into the inner loop: instrumentation that can
+        perturb the update it measures is worse than no instrumentation. This
+        runs after the agent's update, on a fixed deterministic subsample.
+        """
+        inst = self.cfg.instrument
+        if not inst.per_edge_gradients:
+            return
+        if self.epoch % inst.per_edge_gradient_interval != 0:
+            return
+        state = self._social[agent_idx]
+        if state is None or not state.neighbors:
+            return
+
+        data = self.buffer.agent_tensors(agent_idx, device=self.device)
+        take = min(256, data["obs"].shape[0])
+        idx = torch.arange(take, device=self.device)
+        out = ac.actor.evaluate_latent(data["obs"][idx], data["latent"][idx])
+        terms = self._social_terms(agent_idx, out, idx)
+        if terms is None:
+            return
+
+        params = ac.policy_parameters()
+        edge_grads: list[Tensor] = []
+        for j in range(terms.shape[0]):
+            grads = torch.autograd.grad(terms[j], params, retain_graph=True)
+            edge_grads.append(torch.cat([g.reshape(-1) for g in grads]).detach())
+
+        # Reference magnitude: the policy-improvement gradient on the same
+        # subsample, so the consensus share is a like-for-like comparison.
+        clip_grad_norm = float("nan")
+        if inst.consensus_pull:
+            adv = data["advantage"][idx]
+            adv = (adv - adv.mean()) / (adv.std() + 1e-8)
+            ratio = torch.exp(out["log_prob"] - data["log_prob"][idx])
+            clip = self.cfg.ppo.clip_ratio
+            pg = -torch.min(
+                ratio * adv, torch.clamp(ratio, 1 - clip, 1 + clip) * adv
+            ).mean()
+            pg_grads = torch.autograd.grad(pg, params, retain_graph=True, allow_unused=True)
+            clip_grad_norm = float(
+                torch.cat([g.reshape(-1) for g in pg_grads if g is not None]).norm()
+            )
+
+        social_grad = torch.stack(edge_grads).sum(dim=0) * self._beta
+        social_norm = float(social_grad.norm())
+        denom = social_norm + (clip_grad_norm if np.isfinite(clip_grad_norm) else 0.0)
+        share = social_norm / denom if denom > 0 else float("nan")
+        self._consensus.setdefault("social_grad_norm", []).append(social_norm)
+        self._consensus.setdefault("policy_grad_norm", []).append(clip_grad_norm)
+        self._consensus.setdefault("social_grad_fraction", []).append(share)
+
+        sigma_i = float(torch.exp(out["log_std"].detach()).mean())
+        for k, j in enumerate(state.neighbors):
+            gap = self._edge_gap(agent_idx, k)
+            flipped = self._sign_flips.observe(agent_idx, j, edge_grads[k], gap)
+            if inst.per_edge_detail:
+                teacher_sigma = float(torch.exp(state.teacher_log_std[k]).mean())
+                row = {
+                    "i": agent_idx,
+                    "j": j,
+                    "grad_norm": float(edge_grads[k].norm()),
+                    "sign_flip": flipped,
+                    # H2: sigma trajectories on high-D_ij edges need both ends.
+                    "sigma_i": sigma_i,
+                    "sigma_j": teacher_sigma,
+                }
+                row.update(self._edge_detail(agent_idx, k, j))
+                self._edge_rows.append(row)
+
+    def _edge_detail(self, agent_idx: int, k: int, j: int) -> dict[str, Any]:
+        """Extra per-edge fields. The base has no gate, so nothing to add."""
+        return {}
+
+    def _after_agent_update(self, agent_idx: int, ac: ActorCritic) -> None:
+        super()._after_agent_update(agent_idx, ac)
+        self._instrument_edges(agent_idx, ac)
+
     def update(self) -> dict[str, Any]:
         d = self.cfg.distill
         if self.snapshots is None:
@@ -956,6 +1135,9 @@ class SnapshotDistillBase(IPPO):
                 "frozen teacher snapshots for this epoch (SPEC Sec. 2.1 step 1)."
             )
         self._beta = self._current_beta()
+        self._sign_flips.reset_epoch()
+        self._edge_rows = []
+        self._consensus = {}
 
         # Prepared for every agent before any parameter moves, so each agent
         # sees the same frozen snapshots (no sequential update order).
@@ -969,10 +1151,31 @@ class SnapshotDistillBase(IPPO):
                 "beta": self._beta,
                 "snapshot_bytes": self.epoch_snapshot_bytes,
                 "snapshot_bytes_total": self.total_snapshot_bytes,
+                "calibration_id": (
+                    self.calibration_record.calibration_id
+                    if self.calibration_record
+                    else None
+                ),
             }
         )
         metrics.update(self._distill_metrics())
+        metrics.update(self._instrumentation_metrics())
         return metrics
+
+    def _instrumentation_metrics(self) -> dict[str, Any]:
+        inst = self.cfg.instrument
+        qs = inst.quantiles
+        out: dict[str, Any] = {}
+        if inst.per_edge_gradients:
+            out.update(self._sign_flips.summary(qs))
+            norms = [r["grad_norm"] for r in self._edge_rows]
+            out.update(quantiles(norms, qs, "social_grad_norm_"))
+        if inst.consensus_pull:
+            for key, values in self._consensus.items():
+                out.update(quantiles(values, qs, f"consensus_pull/{key}_"))
+        if inst.per_edge_detail and self._edge_rows:
+            out["edges"] = self._edge_rows
+        return out
 
     def _current_beta(self) -> float:
         return self.cfg.distill.beta(self.epoch, self.cfg.train.total_epochs)
@@ -1093,12 +1296,19 @@ class DTrOPD(SnapshotDistillBase):
         # calibration may replace it, D5's running_quantile may track it.
         self.delta_base: float = float(d.delta_base)
         self.gamma_attenuation: float = float(d.gamma_attenuation)
-        self._calibrated = d.calibration == "none"
+        self._calibrated = d.calibration in ("none", "file")
+        if d.calibration == "file":
+            # SPEC Sec. 11 / D6: pinned from the shared artifact, not re-measured.
+            assert self.calibration_record is not None
+            self.delta_base = self.calibration_record.delta_base
+            self.gamma_attenuation = self.calibration_record.gamma_attenuation
         # beta is held at exactly 0 for the whole calibration window and the
         # warmup ramp starts after it, so the measurement provably cannot be
         # influenced by the gate it is calibrating (SPEC Sec. 10 / D1).
         self._beta_epoch_offset = 0
         self._calibration_samples: list[float] = []
+        #: D_ij samples keyed by epoch, so the final N epochs can be pooled (D6).
+        self._calibration_by_epoch: dict[int, list[float]] = {}
         self._divergence_history: list[float] = []
         self._first_epoch_median: float | None = None
         self._warned_inert_gate = False
@@ -1219,14 +1429,34 @@ class DTrOPD(SnapshotDistillBase):
         assert isinstance(state, SocialState)
         return state.weight * self._per_neighbor_kl(state, out, idx)
 
+    def _edge_gap(self, agent_idx: int, edge: int) -> float:
+        """``|D_ij - delta_i|`` -- H1 buckets sign flips by distance to the boundary."""
+        state = self._social[agent_idx]
+        if not isinstance(state, SocialState) or not state.neighbors:
+            return float("nan")
+        return abs(float(state.divergence[edge]) - state.radius)
+
+    def _edge_detail(self, agent_idx: int, k: int, j: int) -> dict[str, Any]:
+        state = self._social[agent_idx]
+        if not isinstance(state, SocialState):
+            return {}
+        return {
+            "D_ij": float(state.divergence[k]),
+            "w_ij": float(state.weight[k]),
+            "delta_i": state.radius,
+            "boundary_gap": abs(float(state.divergence[k]) - state.radius),
+        }
+
     # -- SPEC Sec. 10 / D1: calibration as a documented procedure ---------------- #
 
     def _collect_calibration_samples(self) -> None:
+        epoch_samples: list[float] = []
         for state in self._social:
             if isinstance(state, SocialState) and state.neighbors:
-                self._calibration_samples.extend(
-                    state.divergence.cpu().numpy().tolist()
-                )
+                epoch_samples.extend(state.divergence.cpu().numpy().tolist())
+        if epoch_samples:
+            self._calibration_by_epoch[self.epoch] = epoch_samples
+            self._calibration_samples.extend(epoch_samples)
 
     def calibrate_from_samples(self, samples: Sequence[float]) -> dict[str, float]:
         """The Sec. 10 / D1 procedure, in one place, used online and offline.
@@ -1259,36 +1489,66 @@ class DTrOPD(SnapshotDistillBase):
         )
 
     def _maybe_calibrate(self) -> dict[str, Any]:
-        """Run the D1 procedure at the end of the calibration window."""
+        """The SPEC Sec. 11 / D6 rule, executed in-run.
+
+        A hard ``calibration_epochs`` prefix with beta = 0; ``delta_base`` is the
+        median of the D_ij pooled over the FINAL ``calibration_pool_epochs`` of
+        that window; gamma pins the p95 of the same pooled sample to
+        ``calibration_target_w``.
+
+        The window length is arbitrary and SPEC says so. It is fixed rather than
+        searched, and D7 measures how much it matters.
+        """
         d = self.cfg.distill
         if self._calibrated or d.calibration != "warmup":
             return {}
         self._collect_calibration_samples()
-        warmup = d.resolved_warmup_epochs(self.cfg.train.total_epochs)
-        if self.epoch + 1 < warmup:
+        if self.epoch + 1 < d.calibration_epochs:
             return {}
-        if not self._calibration_samples:
+
+        pooled_epochs = sorted(self._calibration_by_epoch)[-d.calibration_pool_epochs :]
+        pooled: list[float] = []
+        for e in pooled_epochs:
+            pooled.extend(self._calibration_by_epoch[e])
+        if not pooled:
             return {}
-        result = self.calibrate_from_samples(self._calibration_samples)
-        self.delta_base = result["delta_base"]
-        self.gamma_attenuation = result["gamma_attenuation"]
+
+        self.calibration_record = CalibrationRecord.from_samples(
+            pooled,
+            window_epochs=d.calibration_epochs,
+            pooled_epochs=pooled_epochs,
+            reward_spec_version=self.cfg.env.reward_spec_version,
+            git_commit=git_commit(),
+            env_fingerprint=env_fingerprint(self.cfg.env),
+            center_quantile=d.calibration_quantile,
+            tail_quantile=d.calibration_tail_quantile,
+            target_w=d.calibration_target_w,
+            seed=self.seed,
+            note="measured in-run (distill.calibration=warmup)",
+        )
+        self.delta_base = self.calibration_record.delta_base
+        self.gamma_attenuation = self.calibration_record.gamma_attenuation
         self._calibrated = True
         self._beta_epoch_offset = self.epoch + 1
         logger.info(
-            "calibrated attenuation at epoch %d from %d observed edges: "
-            "delta_base %.5g -> %.5g, gamma %.5g -> %.5g",
+            "calibrated at epoch %d from %d edges pooled over epochs %s: "
+            "delta_base %.5g -> %.5g, gamma %.5g -> %.5g (id %s)",
             self.epoch,
-            len(self._calibration_samples),
+            len(pooled),
+            pooled_epochs,
             d.delta_base,
             self.delta_base,
             d.gamma_attenuation,
             self.gamma_attenuation,
+            self.calibration_record.calibration_id,
         )
         return {
             "calibrated_at_epoch": self.epoch,
             "calibrated_delta_base": self.delta_base,
             "calibrated_gamma": self.gamma_attenuation,
-            "calibration_samples": len(self._calibration_samples),
+            "calibration_pooled_epochs": pooled_epochs,
+            "calibration_samples": len(pooled),
+            "calibration_id": self.calibration_record.calibration_id,
         }
 
     # -- metrics ------------------------------------------------------------------ #
@@ -1325,22 +1585,21 @@ class DTrOPD(SnapshotDistillBase):
                 self._first_epoch_median = median
             # SPEC Sec. 10 / D5: the D_ij drift is logged in BOTH radius_reference
             # arms, so the confound is measured whichever arm is used.
+            qs = self.cfg.instrument.quantiles
+            # SPEC Sec. 11: distributions, not means. The D1 failure was
+            # invisible in the mean and obvious in these quantiles.
+            out.update(quantiles(alld, qs, "social_divergence_"))
+            out.update(quantiles(allw, qs, "trust_weight_"))
             out.update(
                 {
-                    "social_divergence_mean": float(alld.mean()),
-                    "social_divergence_min": float(alld.min()),
-                    "social_divergence_max": float(alld.max()),
-                    "social_divergence_p5": float(np.quantile(alld, 0.05)),
                     "social_divergence_p50": median,
-                    "social_divergence_p95": float(np.quantile(alld, 0.95)),
+                    # SPEC Sec. 11 / D5: the drift is logged in BOTH radius
+                    # reference arms so the confound is always measured.
                     "social_divergence_drift": (
                         median / self._first_epoch_median
                         if self._first_epoch_median and self._first_epoch_median > 0
                         else float("nan")
                     ),
-                    "trust_weight_mean": float(allw.mean()),
-                    "trust_weight_min": float(allw.min()),
-                    "trust_weight_max": float(allw.max()),
                 }
             )
             self._warn_if_gate_is_inert(out)

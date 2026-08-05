@@ -1,0 +1,64 @@
+# Phase 5: a fully-instrumented single run.
+#
+# The acceptance bar is that ONE run's metrics file supports every H1-H7
+# measurement without re-running, so every instrument is on. Small enough to
+# finish on a laptop CPU; the instrumentation, not the scale, is the point.
+notes: "Phase 5 instrumentation demonstration"
+
+env:
+  n_agents: 8
+  n_targets: 2
+  capture_group_size: 3
+  max_cycles: 25
+  heterogeneous: true
+  local_ratio: 0.5
+  reward_spec_version: v1
+
+network:
+  hidden_sizes: [64, 64]
+
+ppo:
+  lr: 1.0e-3
+  inner_epochs: 4
+  num_minibatches: 4
+  kl_early_stop: 0.02
+
+distill:
+  enabled: true
+  beta_max: 0.05
+  warmup_fraction: 0.1
+  kappa: 100.0
+  delta_base: 0.1
+  gamma_attenuation: 1.0
+  attenuation: continuous
+  calibration: warmup       # SPEC Sec. 11 / D6
+  calibration_epochs: 8     # ARBITRARY, fixed, pre-registered (D6)
+  calibration_pool_epochs: 2
+  radius_reference: fixed
+
+instrument:
+  metrics_schema_version: v1
+  per_edge_gradients: true          # H1
+  per_edge_gradient_interval: 1
+  per_edge_detail: true             # H2
+  surrogate_gain: true              # H4/H5
+  decay_probe: true                 # H5 (Assumption 2)
+  decay_probe_interval: 10
+  decay_probe_agents: 3
+  decay_probe_episodes: 4
+  consensus_pull: true              # D9
+  per_zone_detail: true
+
+graph:
+  topology: fixed_degree
+  degree: 4
+
+train:
+  algo: dtropd
+  total_epochs: 24
+  num_envs: 16
+  seed: 0
+  device: cpu
+  eval_interval: 12
+  eval_episodes: 8
+  log_dir: runs/phase5

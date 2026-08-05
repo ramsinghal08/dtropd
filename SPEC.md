@@ -173,7 +173,24 @@ Each needs a config and an analysis function. **Report verdicts honestly — "re
 - **H4 (simultaneity penalty grows with N).** *Measure:* per-round `surrogate − realized improvement` across the scale sweep, densely coupled topology. *Confirmed if* roughly linear in `N`.
 - **H5 (size-independence under locality).** *Measure:* same gap per capita with fixed-degree topology; **plus** directly test the decay assumption — perturb agent `j`'s policy, record induced change in `Q^i` vs. graph distance. *Confirmed if* the per-capita gap is flat in `N` **and** sensitivity decays exponentially with hop distance.
 - **H6 (Byzantine tolerance).** *Measure:* final return vs. Byzantine fraction `f ∈ {0, .1, .2, .3, .4, .5}`, trimmed-mean vs. plain-sum, including the adaptive adversary. *Confirmed if* robust aggregation degrades gracefully to `f ≈ 0.4` while plain-sum collapses early.
-- **H7 (headline).** D-TrOPD > IPPO in sample efficiency and final return under heterogeneity, and ≥ NaiveDistill everywhere. *Measure:* learning curves, final returns, **10 seeds**, 95% bootstrap CIs, IQM, plus per-zone returns so gains aren't an artifact of one sector.
+- **H7 (headline) — restated as an INTERACTION hypothesis (SPEC Sec. 10 / D8).**
+  *"D-TrOPD beats IPPO **under heterogeneity**, while **costing** something under
+  homogeneity."* The claim is the **predicted sign flip across environments**, not
+  a one-sided improvement. Both environments are in the sweep and the homogeneous
+  arm is a **control condition**, never a throwaway.
+  *Measure:* learning curves and final returns on **both** environments, **10
+  seeds**, paired seeds, 95% bootstrap CIs, IQM; the per-environment difference
+  `R(D-TrOPD) - R(IPPO)` **and the interaction** (that difference's sign flip
+  between heterogeneous and homogeneous); per-zone returns so gains are not an
+  artifact of one sector; the consensus-pull cost of D9; and the calibration
+  sensitivity sweep of D7.
+  *Confirmed if* the difference is positive under heterogeneity **and** the
+  interaction is significant — reporting the homogeneous cost explicitly — and
+  D-TrOPD ≥ NaiveDistill everywhere.
+  *Rationale for the restatement:* a predicted sign flip is far harder to obtain
+  by accident than a single-direction improvement, so it is the stronger claim.
+  A homogeneous-env cost is therefore not a negative result to be buried; it is
+  half of the prediction.
 
 ### Ablation grid
 
@@ -355,3 +372,99 @@ to the first epoch) so the confound is measured either way.
 the default would require re-deriving the scale-invariance proposition of
 Sec. 2.2, because a radius defined from a running quantile of `D_ij` is no
 longer a fixed function of the agent's own nonstationarity.
+
+---
+
+## 11. Locked decisions — 2026-08-05 (second set)
+
+Continues Sec. 10. Same standing: these are final, and changing one requires the
+same deliberation as changing an invariant.
+
+### D6 — The calibration rule is fixed and pre-registered
+
+There is **no principled window length, and no principled value exists**. The
+arbitrariness is made harmless by fixing the rule and testing sensitivity to it
+(D7), not by searching for a "true" value.
+
+The rule, exactly:
+
+```
+1. A hard beta = 0 prefix of 8 EPOCHS. The beta warmup ramp starts after it.
+2. delta_base := median D_ij, pooled over ALL edges across the FINAL 2 EPOCHS
+   of that window. (Pooling two epochs damps the drift relative to a
+   single-epoch reading; D_ij rises steeply early in training.)
+3. gamma set so an edge at the p95 of the same pooled sample attenuates to
+   w = 0.5.
+4. Measured ONCE per environment configuration, then PINNED for every arm in
+   that comparison -- D-TrOPD, NaiveDistill, and any ablation sharing the env.
+```
+
+**The number 8 is arbitrary.** It has no theoretical justification and none is
+offered. It is fixed so that it is not a researcher degree of freedom, and its
+influence is measured by D7.
+
+The measurement is emitted as a **calibration artifact** (`calibration.json`)
+recording: window length, which epochs were pooled, edge count, the full `D_ij`
+quantile table, `reward_spec_version`, and the git commit. Every arm in a
+comparison must load **the same artifact file**;
+`dtropd.calibration.assert_shared_calibration()` refuses to run a sweep whose
+arms were calibrated separately, and `run.py sweep-check` exposes it.
+
+Arms that have no radius (NaiveDistill, per D4) still **declare** the artifact
+their comparison used, so the sweep is auditable, without acquiring a
+`delta_base` they must not have.
+
+### D7 — Calibration sensitivity is pre-registered as part of H7
+
+H7 runs at `delta_base` in **{0.022, 0.026, 0.049}** -- the three values the
+6-, 8- and 10-epoch windows actually produced on this environment.
+
+**Decision rule, fixed now, before any result is seen:**
+
+* verdict identical at all three -> report *"conclusion stable across a 2x range
+  of delta_base"*; the window choice is then immaterial;
+* verdict flips between them -> **that is the finding**: the benefit is
+  calibration-sensitive, and it is reported as a limitation.
+
+**Do not pick the window that gives the nicer answer.** The sweep is run in
+full and all three are reported regardless of which way they come out.
+
+### D8 — H7 is an interaction hypothesis
+
+Restated in Sec. 6. Both environments are in the sweep; the homogeneous arm is a
+control condition; the predicted **sign flip** is the claim; the interaction is
+reported explicitly.
+
+### D9 — The consensus-pull cost is a first-class measured quantity
+
+Observed in Phase 4: both distillation arms sit below IPPO on the homogeneous
+environment, together, with the gap opening early and staying flat. Reading:
+distillation pulls agents toward consensus, which costs where agents are already
+similar and there is nothing to gain.
+
+This is **not an anecdote**. It is the floor the heterogeneous benefit must
+clear for the method to net out positive, so it is measured directly and
+reported with CIs in the H7 table. Three quantities, all in the metrics file:
+
+* `consensus_pull/social_grad_fraction` -- the share of the update attributable
+  to `beta * grad L_soc`, per agent per epoch;
+* `consensus_pull/policy_dispersion_*` -- quantiles of pairwise `D_ij` across
+  the graph; consensus shows up as dispersion collapsing;
+* `consensus_pull_cost` -- `R(IPPO) - R(distiller)` on the homogeneous control,
+  with a bootstrap CI, computed by `dtropd.analysis`.
+
+### D10 — Housekeeping
+
+Merged PR #1's description was edited after it merged and describes Phase 3 work
+its diff does not contain. A correction comment is posted on it. Git history is
+evidence in a research project and must not be quietly misleading.
+
+### Metrics schema versioning
+
+The metrics schema is versioned (`metrics_schema_version`) and stamped into
+every `metadata.json`. A schema change after H7 starts invalidates stored curves
+exactly as a `reward_spec_version` bump does.
+
+Logging preference, now a rule: **log distributions (quantiles), not just
+means.** The `delta_base` failure of Sec. 10 / D1 was invisible in the mean and
+obvious in the `D_ij` distribution.
