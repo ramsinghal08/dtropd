@@ -1,0 +1,33 @@
+{
+  "delta_base": 0.15830174833536148,
+  "gamma_attenuation": 10.164669643050667,
+  "window_epochs": 8,
+  "pooled_epochs": [
+    6,
+    7
+  ],
+  "pool_size": 2,
+  "edge_count": 264,
+  "quantiles": {
+    "p05": 0.04267784394323826,
+    "p10": 0.048104533553123476,
+    "p25": 0.06261143833398819,
+    "p50": 0.07915087416768074,
+    "p75": 0.09522119164466858,
+    "p90": 0.11213943362236023,
+    "p95": 0.13710972890257836,
+    "p99": 0.17828342050313956
+  },
+  "quantile_definition": "delta_base = q0.5 of D_ij pooled over the final 2 epoch(s) of a 8-epoch beta=0 window; gamma set so a q0.95 edge attenuates to w = 0.5 (SPEC Sec. 11 / D6)",
+  "reward_spec_version": "v1",
+  "git_commit": "aeb20127c9fa3c8c853bdc2f417a94fa223b9b1c",
+  "env_fingerprint": "d6d1998b2a14da16",
+  "created_at": "2026-08-05T14:22:01+0000",
+  "seed": 0,
+  "source_config": "experiments/configs/h7_env_het.yaml",
+  "note": "DERIVED, NOT MEASURED. delta_base = 2.0x the calibrated value from window 8 (0.079151 -> 0.158302); gamma carried over unchanged. Added per SPEC Sec. 16 / D17 to test the LOOSE-gate direction, which the measured grid does not reach. Pre-outcome and strictly harder for the hypothesis: a looser gate is closer to NaiveDistill, so a benefit that survives here is not attributable to gating.",
+  "calibration_target_w": 0.5,
+  "tail_quantile": 0.95,
+  "center_quantile": 0.5,
+  "calibration_id": "d3d81539a56d2b79"
+}

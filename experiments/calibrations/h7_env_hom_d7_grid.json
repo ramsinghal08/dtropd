@@ -1,0 +1,26 @@
+{
+  "windows": [
+    6,
+    8,
+    10
+  ],
+  "derived_delta_base": {
+    "6": 0.0479771513491869,
+    "8": 0.07691618427634239,
+    "10": 0.09608590230345726
+  },
+  "spread_max_over_min": 2.0027429641273544,
+  "min_spread_required": 1.5,
+  "widened": false,
+  "grid": [
+    0.0479771513491869,
+    0.07691618427634239,
+    0.09608590230345726
+  ],
+  "rule": "SPEC Sec. 12 / D7-AMENDED: grid = delta_base measured at calibration windows [6, 8, 10] on the actual H7 environment",
+  "artifacts": {
+    "6": "experiments/calibrations/h7_env_hom_w6.json",
+    "8": "experiments/calibrations/h7_env_hom_w8.json",
+    "10": "experiments/calibrations/h7_env_hom_w10.json"
+  }
+}

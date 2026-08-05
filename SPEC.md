@@ -823,3 +823,72 @@ the curve comes out flat — and a flat curve is indistinguishable between "robu
 aggregation held" and "nothing had time to happen". The endpoints are the
 cheapest possible test of whether the budget can express the effect at all, and
 `experiments/h6_budget_check.py` runs exactly that check.
+
+---
+
+## 16. D7 sign-off and grid extension — 2026-08-05
+
+### D17 — The measured grid is signed off; one point is ADDED, and it is not a widening
+
+**Sign-off, recorded explicitly.** The D7 sensitivity grid derived on the actual
+H7 treatment environment (`h7_env_het.yaml`, 264 edges per window) stands as
+**pre-registered**:
+
+| window | `delta_base` | `gamma` |
+|---|---|---|
+| 6 | **0.051703** | 14.8832 |
+| 8 | **0.079151** | 10.1647 |
+| 10 | **0.092786** | 9.4748 |
+
+**Spread max/min = 1.795, which clears the 1.5x threshold, so the D7-AMENDED
+widening clause does NOT fire.** `widened: false` in the artifact. This is
+recorded rather than left implicit because "the grid was widened" and "the grid
+was extended" would otherwise be indistinguishable in the record, and they have
+opposite meanings: the first is a rule firing automatically on a degenerate
+spread, the second is a deliberate addition.
+
+**The addition.** A fourth point is added at **2x the calibrated value**:
+
+    delta_base = 2 x 0.079151 = 0.158302   (treatment)
+                 2 x 0.076916 = 0.153832   (control)
+
+**This is NOT a D7 widening.** The spread check passed; nothing triggered. It is
+a separate, deliberate extension, and the reason is the F-1 inertness finding.
+
+**Why.** The pre-registered grid spans **0.65x to 1.17x** of the calibrated
+value — almost entirely *tighter* gates. The loose-gate direction is untested,
+and that is precisely where the question *"is this benefit gating, or is it just
+distillation?"* lives. A looser `delta_base` admits more neighbours inside the
+trust radius, pushing D-TrOPD toward NaiveDistill. Without a point in that
+direction, a positive H7 result could not distinguish a benefit that comes from
+the trust gate from one that comes from distillation per se, which is the
+central claim of the method.
+
+**Why it is legitimate to add it now.** Two properties, both checkable:
+
+1. **Pre-outcome.** No H7 arm has run. The addition cannot have been chosen to
+   produce a preferred result because no result exists to prefer.
+2. **Strictly harder.** A looser gate is *closer to the baseline it must beat*.
+   Adding this point can only make H7 harder to confirm, never easier. An
+   extension that could only hurt the hypothesis is not one that a preferred
+   outcome would motivate.
+
+**Provenance is kept honest.** The three measured points come from calibration
+windows. The fourth does not — no window produces it — so its artifact is
+written by scaling the window-8 record, carries `gamma` over unchanged, and
+records in its own `note` field that it is **DERIVED, NOT MEASURED**. It keeps
+its content hash, so it is as tamper-evident as the measured ones, and it is
+never presented as a measurement.
+
+**Both environments.** H7 spans the heterogeneous treatment and the homogeneous
+control, and D6 gives each its own artifact — the D6 guard refused the first
+attempt to pin one environment's artifact to both, correctly. Each grid point
+therefore pins two artifacts, and the control arms carry their own `delta_base`
+by per-arm override. The control's own measured grid has spread 2.003x, which
+also does not trigger widening.
+
+**H7 is APPROVED to run at these four points.** Condition 1 of D14 is now
+satisfied (grid derived *and* confirmed); condition 2 was satisfied by
+`h4_scale` and `h5_scale` under D14-AMENDED. The verdict is the **interaction**
+— the predicted sign flip between environments — and whether it survives all
+four grid points. A single positive point is not the result.
