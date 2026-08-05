@@ -47,6 +47,7 @@ import torch
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from dtropd import golden  # noqa: E402
 from dtropd.algorithms import build_algorithm  # noqa: E402
 from dtropd.config import Config  # noqa: E402
 from dtropd.train import train  # noqa: E402
@@ -175,19 +176,34 @@ def check_ippo_regression() -> dict[str, Any]:
         metrics = algo.update()
         history.append({**rollout, **metrics})
 
-    mismatches = {}
-    worst = 0.0
+    # Exact equality is not the right assertion across machines, and neither is
+    # pointwise relative error for a metric that crosses zero. The rule -- and
+    # the reasoning -- live in dtropd.golden, shared with tests/test_baselines.py
+    # so there is exactly one definition of it.
+    verdicts: dict[str, Any] = {}
+    worst_dev, worst_first = 0.0, 0.0
     for key, expected in reference["curve"].items():
         actual = [history[i][key] for i in range(len(expected))]
-        worst = max(worst, max(abs(a - b) for a, b in zip(actual, expected)))
-        if actual != expected:
-            mismatches[key] = {"reference": expected, "current": actual}
+        verdict = golden.compare_curve(key, actual, expected)
+        verdicts[key] = verdict
+        if verdict.kind == "smooth":
+            worst_dev = max(worst_dev, verdict.max_deviation)
+            worst_first = max(worst_first, verdict.first_epoch_deviation)
+    mismatches = {k: v.as_dict() for k, v in verdicts.items() if not v.ok}
     return {
         "reference": str(path.relative_to(ROOT)),
         "generated_on_commit": "011de8f (Phase 2, pre-refactor)",
         "metrics_compared": sorted(reference["curve"]),
-        "max_abs_diff": worst,
+        "deviation_units": (
+            "absolute; for count-valued metrics, flipped threshold decisions"
+        ),
+        "first_epoch_tol": f"{golden.FIRST_EPOCH_ATOL:g} + {golden.FIRST_EPOCH_RANGE_TOL:g} x range",
+        "curve_tol": f"{golden.CURVE_ATOL:g} + {golden.CURVE_RANGE_TOL:g} x range",
+        "step_valued_keys": list(golden.STEP_VALUED_KEYS),
+        "max_first_epoch_deviation": worst_first,
+        "max_deviation": worst_dev,
         "mismatched_metrics": sorted(mismatches),
+        "detail": mismatches,
         "passed": not mismatches,
     }
 

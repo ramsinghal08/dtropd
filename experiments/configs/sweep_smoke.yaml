@@ -1,0 +1,78 @@
+# Smoke sweep: exercises the ENTIRE Phase 6 harness (guards, resume, report,
+# figure) at a scale that finishes in under a minute on a laptop CPU.
+#
+# SPEC Sec. 9 rule 6 in sweep form: the machinery must be debuggable without a
+# GPU-hours experiment. This is what the Phase 6 acceptance runs; h7.yaml is
+# the real thing and is deliberately NOT run until Phase 7.
+name: sweep_smoke
+notes: "Phase 6 machinery test. NOT an experiment: 4 agents, 4 epochs, 2 seeds."
+out_dir: runs/sweep_smoke
+seeds: [0, 1]
+
+base:
+  env:
+    n_agents: 4
+    n_targets: 1
+    capture_group_size: 2
+    max_cycles: 8
+    heterogeneous: true
+    local_ratio: 0.5
+    reward_spec_version: v1
+  network:
+    hidden_sizes: [16, 16]
+  ppo:
+    lr: 1.0e-3
+    inner_epochs: 2
+    num_minibatches: 2
+    kl_early_stop: 0.02
+  distill:
+    enabled: false
+    beta_max: 0.05
+    warmup_epochs: 1
+    kappa: 100.0
+    delta_base: 0.01
+    gamma_attenuation: 20.0
+  instrument:
+    decay_probe_interval: 2
+    decay_probe_agents: 2
+    decay_probe_episodes: 2
+  graph:
+    topology: ring
+  train:
+    algo: ippo
+    total_epochs: 4
+    num_envs: 2
+    device: cpu
+    eval_interval: 4
+    eval_episodes: 4
+
+# SPEC Sec. 11 / D6: one calibration artifact per ENVIRONMENT configuration,
+# pinned by every arm in that environment -- including IPPO, which declares it
+# for auditability without consuming a delta_base (D4 x D6).
+arms:
+  - name: ippo_het
+    algo: ippo
+    condition: heterogeneous
+    overrides:
+      distill.calibration: file
+      distill.calibration_file: experiments/calibrations/sweep_smoke_het.json
+  - name: dtropd_het
+    algo: dtropd
+    condition: heterogeneous
+    overrides:
+      distill.calibration: file
+      distill.calibration_file: experiments/calibrations/sweep_smoke_het.json
+  - name: ippo_hom
+    algo: ippo
+    condition: homogeneous
+    overrides:
+      env.heterogeneous: false
+      distill.calibration: file
+      distill.calibration_file: experiments/calibrations/sweep_smoke_hom.json
+  - name: dtropd_hom
+    algo: dtropd
+    condition: homogeneous
+    overrides:
+      env.heterogeneous: false
+      distill.calibration: file
+      distill.calibration_file: experiments/calibrations/sweep_smoke_hom.json

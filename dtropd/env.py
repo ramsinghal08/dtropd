@@ -91,17 +91,34 @@ class CooperativeCaptureEnv(_ParallelEnvBase):
     #: silently incomparable.
     REWARD_SPEC_VERSION = "v1"
 
+    #: Reward specifications this class implements. SPEC Sec. 12 / D13: versions
+    #: coexist; "v1" is H7's primary condition (global team term) and
+    #: "v1-local" sums the team term over N_i so Assumption 2 holds, used only
+    #: by H5's locality condition.
+    IMPLEMENTED_REWARD_SPECS = ("v1", "v1-local")
+
     def __init__(self, cfg: EnvConfig | None = None, seed: int | None = None):
         self.cfg = cfg or EnvConfig()
         self.cfg.validate()
-        if self.cfg.reward_spec_version != self.REWARD_SPEC_VERSION:
+        if self.cfg.reward_spec_version not in self.IMPLEMENTED_REWARD_SPECS:
             raise ValueError(
                 f"env.reward_spec_version={self.cfg.reward_spec_version!r} but this "
-                f"environment implements {self.REWARD_SPEC_VERSION!r}. The reward "
-                "definition is frozen (SPEC Sec. 10 / D3); a version mismatch means "
-                "the stored curves and this code disagree about what is being "
-                "optimised."
+                f"environment implements {self.IMPLEMENTED_REWARD_SPECS}. Reward "
+                "definitions are frozen (SPEC Sec. 10 / D3); a version mismatch "
+                "means the stored curves and this code disagree about what is "
+                "being optimised."
             )
+        self.reward_spec_version = self.cfg.reward_spec_version
+        self._local_team = self.reward_spec_version == "v1-local"
+        # Precompute the closed neighbourhood N_i U {i} used by the local team
+        # term. Assumption 2(i) requires r_i to depend only on (s_{N_i}, a_{N_i}).
+        self._team_members: list[np.ndarray] | None = None
+        if self._local_team:
+            adj = self.cfg.team_neighborhood or [[] for _ in range(self.cfg.n_agents)]
+            self._team_members = [
+                np.array(sorted({i, *adj[i]}), dtype=np.int64)
+                for i in range(self.cfg.n_agents)
+            ]
         self.n_agents = self.cfg.n_agents
         self.n_targets = self.cfg.n_targets
         self.obs_dim = self.cfg.obs_dim
@@ -343,6 +360,45 @@ class CooperativeCaptureEnv(_ParallelEnvBase):
 
     # -- reward ------------------------------------------------------------- #
 
+    def _local_team_terms(self, d: np.ndarray, colliding: np.ndarray) -> np.ndarray:
+        """Per-agent team term restricted to ``N_i U {i}`` (reward spec "v1-local").
+
+        SPEC Sec. 12 / D11(b). Identical in form to the global team term, but
+        every sum runs over agent ``i``'s closed neighbourhood only:
+
+        * shaping uses the ``m`` nearest *neighbourhood* members to each target;
+        * a target counts as captured for ``i`` only if ``m`` of them are inside
+          the radius -- so a neighbourhood smaller than ``m`` can never capture,
+          which is the honest consequence of making the signal local;
+        * collisions are counted among neighbourhood members only.
+
+        The result depends on no agent outside ``N_i U {i}``, so Assumption 2(i)
+        holds -- which is exactly what makes this the environment where H5's
+        prediction can be tested rather than assumed.
+        """
+        cfg = self.cfg
+        m = cfg.capture_group_size
+        assert self._team_members is not None
+        out = np.zeros(self.n_agents, dtype=np.float64)
+        for i, members in enumerate(self._team_members):
+            sub = d[:, members]  # (T, |N_i U {i}|)
+            k = min(m, sub.shape[1])
+            nearest_i = np.sort(sub, axis=1)[:, :k]
+            shaping_i = -nearest_i.mean(axis=1)
+            captured_i = (
+                np.all(nearest_i <= cfg.capture_radius, axis=1)
+                if sub.shape[1] >= m
+                else np.zeros(sub.shape[0], dtype=bool)
+            )
+            block = colliding[np.ix_(members, members)]
+            collisions_i = int(np.sum(np.triu(block, k=1)))
+            out[i] = (
+                cfg.shaping_weight * float(shaping_i.sum())
+                + cfg.capture_bonus * float(captured_i.sum())
+                - cfg.collision_penalty * collisions_i
+            )
+        return out
+
     def _rewards_and_info(self) -> tuple[np.ndarray, dict[str, Any]]:
         cfg = self.cfg
         m = cfg.capture_group_size
@@ -381,7 +437,17 @@ class CooperativeCaptureEnv(_ParallelEnvBase):
             -cfg.shaping_weight * d.min(axis=0)
             - cfg.collision_penalty * per_agent_collisions
         )
-        rewards = (1.0 - cfg.local_ratio) * team + cfg.local_ratio * local
+        if self._local_team:
+            # SPEC Sec. 12 / D11(b), reward_spec_version "v1-local": the team
+            # term is summed over N_i U {i} instead of over all agents, so r_i
+            # depends only on the states of agent i's closed neighbourhood --
+            # which is what Assumption 2(i) requires and what "v1" violates.
+            team_per_agent = self._local_team_terms(d, colliding)
+            rewards = (
+                1.0 - cfg.local_ratio
+            ) * team_per_agent + cfg.local_ratio * local
+        else:
+            rewards = (1.0 - cfg.local_ratio) * team + cfg.local_ratio * local
 
         zones = self.zone_ids()
         n_zones = len(ZoneKind.NAMES)
@@ -397,11 +463,12 @@ class CooperativeCaptureEnv(_ParallelEnvBase):
             "agents_by_zone": agents_by_zone,
             "team_reward": team,
             "local_rewards": local,
+            "team_scope": "neighborhood" if self._local_team else "global",
             "captures": int(captured.sum()),
             "captured": captured.copy(),
             "collisions": collisions,
             "mean_capture_distance": float(nearest.mean()),
-            "reward_spec_version": self.REWARD_SPEC_VERSION,
+            "reward_spec_version": self.reward_spec_version,
             "shaping": float(shaping.sum()),
             "zones": zones,
             "step": self._step_count,

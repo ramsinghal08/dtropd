@@ -468,3 +468,142 @@ exactly as a `reward_spec_version` bump does.
 Logging preference, now a rule: **log distributions (quantiles), not just
 means.** The `delta_base` failure of Sec. 10 / D1 was invisible in the mean and
 obvious in the `D_ij` distribution.
+
+---
+
+## 12. Amendments and locked decisions — 2026-08-05 (third set)
+
+Continues Sec. 10-11. Same standing.
+
+### D7-AMENDED — the sensitivity grid is a procedure, not three numbers
+
+**Original wording (Sec. 11 / D7):** "H7 runs at `delta_base` in
+**{0.022, 0.026, 0.049}** -- the three values the 6-, 8- and 10-epoch windows
+actually produced on this environment."
+
+**Amendment.** Those literal values were derived from a 6/8/10-epoch window
+sweep on an environment configuration that has since changed; the Phase 5
+environment calibrates to ~0.12, outside the grid entirely. Holding the literal
+numbers would not test window sensitivity -- it would test three arbitrary
+*severe mis-calibrations*, which is a different and far less interesting
+experiment.
+
+**Amended rule:**
+
+```
+Run the D6 calibration at window lengths 6, 8 and 10 on the ACTUAL H7
+environment. The three resulting delta_base values ARE the sensitivity grid.
+```
+
+**Spread check.** After deriving the grid, report `max/min`. If the spread is
+under **1.5x** the check tests nothing; widen deliberately to **+/-2x** around
+the calibrated value and record that this was done and why.
+
+**Decision rule: UNCHANGED.** Identical verdict at all three -> report
+"conclusion stable across the calibration-window range". Verdict flips ->
+report calibration-sensitivity as a limitation. **Never pick the window with
+the nicer answer.**
+
+**Provenance.** This is a **disclosed pre-outcome amendment, not a post-hoc
+revision.** No H7 run has been performed, so no result influenced it. The
+reason is that the literal values derived from a superseded environment config;
+D7's intent was the *spread*, not the numbers. Both the original wording and
+the amendment are recorded above so the change is auditable.
+
+### D11 — Assumption 2 is violated by the primary environment; H5 gets its own condition
+
+The reward (Sec. 10 / D3) is
+`r_i = (1 - local_ratio) * team + local_ratio * local_i`, where `team` sums
+shaping, capture bonus and collisions over **all** agents. At
+`local_ratio = 0.5`, half of every agent's reward is a global quantity
+depending on every agent at every hop distance, **with weight independent of
+distance**.
+
+The theory paper's Assumption 2(i) requires `r_i` to depend only on
+`(s_{N_i}, a_{N_i})`. It does not. **Assumption 2 is violated by construction
+in the primary condition**, and the decay probe's positive log-slope (+0.78
+observed in Phase 5) may be reporting that correctly rather than being an
+artifact of low power.
+
+Three required actions:
+
+**(a) Fix the probe's power, regardless of the above.** Two hop levels cannot
+support a decay fit. Use a ring or path topology over 12-24 agents to obtain
+**diameter >= 6**; raise `decay_probe_episodes` substantially; run multiple
+seeds; report the fit **with a CI and the number of hop levels it used**. A
+slope derived from **fewer than 4 hop levels must be reported as
+uninterpretable**, and the code labels it so.
+
+**(b) Add a local-reward condition, used by H5 only.** The team term is summed
+over `N_i` rather than over all agents -- preferred over `local_ratio = 1.0`
+because it keeps the coordination signal while making it local. This is an
+environment in which Assumption 2 **actually holds**, and is the honest place
+to test the theorem's prediction. H5 becomes *"the size-independent bound holds
+where its assumption holds."*
+
+**(c) Measure and report the violation in the primary environment** as a result
+in its own right: *"Assumption 2 fails in standard MPE-style cooperative
+navigation because the team reward is global; Theorem 2 therefore does not
+cover the most common MARL benchmark class."* The decay probe is reported in
+**both** conditions, side by side.
+
+**Scope note (do not conflate with D2).** This does **not** reopen D2.
+`local_ratio = 0.5` remains H7's primary arm; the argument that a pure-global
+reward tests credit assignment rather than distribution mismatch still holds.
+**D2 governs H7.** H5's locality condition is the *subject* of H5's test and
+therefore needs its own environment. The two scopes are separate.
+
+### D12 — Audit artifacts are written after the thing they audit
+
+Standing rule, generalised from the Phase 5 metadata fix: **any artifact whose
+purpose is auditability is written at the END of the run**, with only a
+crash-safety stub written early.
+
+A calibration measured at epoch 7 cannot appear in a `metadata.json` written at
+epoch 0; writing it early and never revisiting it silently defeats the
+auditability the artifact exists for. Applies to every future artifact of this
+kind, not just calibration.
+
+### D13 — Reward spec versions may coexist; comparisons may not span them
+
+`v1` is **frozen and unedited**. `v1-local` is a **new** version used **only**
+by H5's locality condition (team term summed over `N_i` rather than all
+agents). H7 remains entirely on `v1` per D2.
+
+**Rule:** no **algorithm-performance** comparison may span reward spec
+versions. Any figure or table comparing algorithms must draw all of its arms
+from a single version, and the launcher **refuses otherwise** -- the same
+enforcement pattern as the D6 calibration sweep-check.
+
+**Exception, explicitly allowed and explicitly labelled:**
+**environment-property** measurements *may* span versions, because the
+environments themselves are the subject. D11(c)'s side-by-side decay probe on
+`v1` vs `v1-local` is such a measurement: it compares whether Assumption 2
+holds, not how algorithms perform. It is labelled **cross-version** wherever it
+appears.
+
+**Enforcement.** Four guards, because each clause of the rule can be broken
+independently:
+
+1. `check_reward_spec_versions` refuses a *plan* whose algorithm arms span
+   versions (the launcher guard the rule names).
+2. `check_manifest_reward_spec_versions` refuses to build a *report or figure*
+   from a manifest whose algorithm runs span versions, and runs before the
+   report touches disk. The launcher guard alone is not sufficient: D13 binds
+   "any figure or table", and `run.py sweep --report-only` rebuilds the figure
+   from a manifest on disk without going through `run_sweep`, so `preflight`
+   never executes. A manifest merged from two sweep directories, or written
+   before the config was edited, would otherwise render silently.
+3. `test_v1_reward_spec_is_frozen` pins `v1`'s rewards for a hand-placed
+   configuration. "Frozen" only means something if editing it fails loudly: a
+   change to `v1` silently invalidates every stored curve, calibration artifact
+   and H7 arm already denominated in it. A deliberate change is a *new* version,
+   which is the mechanism this decision exists to provide.
+4. `test_v1_local_is_used_only_by_the_h5_locality_condition` parses every
+   shipped config and refuses `v1-local` outside `h5_locality.yaml` -- the way
+   the scope restriction breaks in practice is someone reaching for the
+   localised reward in an unrelated sweep.
+
+The cross-version label is rendered onto the figure itself, not only into
+`report.json`, since a figure is where it is most likely to be read without the
+report open beside it.

@@ -329,20 +329,23 @@ def h5_locality(records: Sequence[dict]) -> HypothesisResult:
         value["gap_per_capita_ci"] = bootstrap_ci([r["gap_per_agent"] for r in rows])
     if probes:
         latest = probes[-1]
-        by_hop = {int(k): v for k, v in latest["by_hop"].items() if int(k) > 0}
-        hops = sorted(by_hop)
-        means = [by_hop[h]["mean"] for h in hops]
-        decay = float("nan")
-        if len(hops) > 1 and all(m > 0 for m in means):
-            # exponential decay <=> linear in log-space; slope is the decay rate
-            decay = float(np.polyfit(hops, np.log(means), 1)[0])
+        fit = latest.get("fit") or {}
         value["decay_probe"] = {
-            "hops": hops,
-            "mean_abs_delta_return": means,
-            "log_slope": decay,
-            "expected": "negative slope = exponential decay with hop distance",
+            **fit,
+            "graph_diameter": latest.get("graph_diameter"),
             "perturbed_agents": latest.get("perturbed_agents"),
             "pairs": len(latest.get("pairs", [])),
+            # SPEC Sec. 12 / D11(a): a slope from < 4 hop levels is reported as
+            # uninterpretable rather than as a number that looks like evidence.
+            "verdict": (
+                "uninterpretable (too few hop levels)"
+                if not fit.get("interpretable", False)
+                else (
+                    "consistent with exponential decay"
+                    if fit.get("log_slope", 0.0) < 0.0
+                    else "NOT consistent with exponential decay"
+                )
+            ),
         }
     return HypothesisResult(
         "H5",
