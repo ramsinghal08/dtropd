@@ -26,6 +26,7 @@ import torch.nn as nn
 from torch import Tensor
 
 from .buffer import RolloutBuffer
+from .byzantine import apply_attack, byzantine_agents
 from .calibration import CalibrationError, CalibrationRecord, env_fingerprint
 from .config import Config, ConfigError, DistillConfig
 from .env import SyncVectorEnv, ZoneKind
@@ -227,6 +228,7 @@ class BaseAlgorithm(abc.ABC):
 
         obs = vec_env.reset(seed=derive_seed(self.seed, "env_reset", self.epoch))
         episode_returns: list[float] = []
+        episode_agent_returns: list[np.ndarray] = []
         episode_captures: list[float] = []
         zone_returns: list[np.ndarray] = []
         zone_collisions: list[np.ndarray] = []
@@ -273,6 +275,8 @@ class BaseAlgorithm(abc.ABC):
                 ep = info.get("episode")
                 if ep is not None:
                     episode_returns.append(ep["return"])
+                    if "agent_returns" in ep:
+                        episode_agent_returns.append(ep["agent_returns"])
                     episode_captures.append(ep["captures"])
                     zone_returns.append(ep["zone_returns"])
                     zone_collisions.append(ep["zone_collisions"])
@@ -289,6 +293,17 @@ class BaseAlgorithm(abc.ABC):
             "step_reward_mean": float(np.mean(step_rewards)),
             "collisions_mean": float(np.mean(collisions)),
         }
+        # H6 reads the honest agents' return. Emitted whenever the per-agent
+        # breakdown exists, not only when an attack is configured, so the f=0
+        # baseline cell carries the same field as every other cell and the
+        # sweep never compares an honest-only number against an all-agent one.
+        if episode_agent_returns:
+            per_agent = np.stack(episode_agent_returns)
+            honest = [i for i in range(self.n_agents) if i not in getattr(self, "_byzantine_set", ())]
+            stats["episode_return_mean_honest"] = float(per_agent[:, honest].mean())
+            if honest and len(honest) < self.n_agents:
+                byz = [i for i in range(self.n_agents) if i not in honest]
+                stats["episode_return_mean_byzantine"] = float(per_agent[:, byz].mean())
         if zone_returns:
             zr = np.stack(zone_returns).mean(axis=0)
             for z, zname in enumerate(ZoneKind.NAMES):
@@ -901,14 +916,73 @@ class SnapshotDistillBase(IPPO):
         self.snapshots: list[TanhGaussianActor] | None = None
         self._social: list[TeacherBundle | None] = [None] * self.n_agents
         self._beta: float = 0.0
-        self._retain_graph = d.aggregation != "sum"
         self.epoch_snapshot_bytes = 0
         self.total_snapshot_bytes = 0
+
+        # Phase 7 / H6. A Byzantine neighbour corrupts the gradient it induces,
+        # so the attack has to be injected where the per-edge gradients exist.
+        # With plain-sum aggregation those gradients are never materialised --
+        # the loss path handles the whole sum at once -- so an active adversary
+        # forces the per-edge path on regardless of the aggregation operator.
+        # Without that, "plain sum collapses early" would be untestable: the
+        # sum arm would silently run unattacked and look robust.
+        stress = cfg.stress
+        self.byzantine: list[int] = byzantine_agents(
+            self.n_agents,
+            stress.n_byzantine(self.n_agents),
+            stress.byzantine_seed if stress.byzantine_seed is not None else seed,
+        )
+        self._byzantine_set = set(self.byzantine)
+        #: Agents every one of whose neighbours is Byzantine -- an unwinnable
+        #: neighbourhood, reported rather than silently counted as a success.
+        self._all_byzantine_neighbourhoods: set[int] = set()
+        self._byzantine_gen = torch.Generator(device="cpu").manual_seed(
+            derive_seed(seed, "byzantine_noise")
+        )
+        self._uses_loss_path = d.aggregation == "sum" and not self.byzantine
+        self._retain_graph = not self._uses_loss_path
+
+        # Communication dropout (Phase 7). Its own stream, so turning dropout on
+        # does not shift the Byzantine draw or the environment seeding.
+        self._dropout_rng = np.random.default_rng(derive_seed(seed, "comm_dropout"))
+        self._epoch_neighbors: list[list[int]] = [list(n) for n in self.neighbors]
 
         # Per-edge instrumentation state (Phase 5 / H1).
         self._sign_flips = SignFlipTracker(cfg.instrument.sign_flip_buckets)
         self._edge_rows: list[dict[str, Any]] = []
         self._consensus: dict[str, Any] = {}
+
+    # -- Phase 7 / H6: Byzantine neighbours ------------------------------------ #
+
+    def _corrupt_byzantine_edges(self, agent_idx: int, stacked: Tensor) -> Tensor:
+        """Replace rows contributed by Byzantine neighbours with their attack.
+
+        Row ``k`` of ``stacked`` is the gradient induced by ``state.neighbors[k]``,
+        so the Byzantine rows are found by membership rather than by position --
+        neighbour lists differ per agent and are not sorted by agent index.
+        """
+        if not self.byzantine:
+            return stacked
+        state = self._social[agent_idx]
+        if state is None or not state.neighbors:
+            return stacked
+        rows = [k for k, j in enumerate(state.neighbors) if j in self._byzantine_set]
+        if not rows:
+            return stacked
+        if len(rows) == len(state.neighbors):
+            # Every neighbour of this agent is Byzantine. The adaptive attack has
+            # no honest gradient to hide behind, and no aggregation rule can
+            # recover a signal that is not present. Leave the edges honest and
+            # record it, rather than crashing or pretending a defence held.
+            self._all_byzantine_neighbourhoods.add(agent_idx)
+            return stacked
+        return apply_attack(
+            stacked,
+            rows,
+            self.cfg.stress.byzantine_mode,
+            self.cfg.stress.byzantine_scale,
+            generator=self._byzantine_gen,
+        )
 
     # -- SPEC Sec. 2.1 step 1: broadcast frozen snapshots ----------------------- #
 
@@ -923,17 +997,38 @@ class SnapshotDistillBase(IPPO):
 
     def on_epoch_start(self) -> None:
         self.snapshots = [self._freeze(ac.actor) for ac in self.agents]
-        # Communication volume: one actor snapshot per directed edge.
+        self._epoch_neighbors = self._deliver_snapshots()
+        # Communication volume: one actor snapshot per directed edge that
+        # actually delivered. Counting the dropped ones would overstate the
+        # bandwidth cost that SPEC Sec. 7 asks to be reported.
         self.epoch_snapshot_bytes = sum(
-            len(self.neighbors[i]) * self.snapshot_bytes for i in range(self.n_agents)
+            len(self._epoch_neighbors[i]) * self.snapshot_bytes
+            for i in range(self.n_agents)
         )
         self.total_snapshot_bytes += self.epoch_snapshot_bytes
+
+    def _deliver_snapshots(self) -> list[list[int]]:
+        """Which neighbours' snapshots arrived this epoch (Phase 7 dropout).
+
+        Dropout is per *ordered* pair, so ``i`` may hear from ``j`` in an epoch
+        where ``j`` does not hear from ``i``. A symmetric drop would quietly be a
+        different stressor -- a temporarily sparser graph, which both endpoints
+        agree on -- and real link failure is not that.
+        """
+        p = self.cfg.stress.comm_dropout
+        if p <= 0.0:
+            return [list(n) for n in self.neighbors]
+        out = []
+        for i in range(self.n_agents):
+            keep = self._dropout_rng.random(len(self.neighbors[i])) >= p
+            out.append([j for j, k in zip(self.neighbors[i], keep) if k])
+        return out
 
     # -- teacher parameters on the student's own states ------------------------- #
 
     @torch.no_grad()
     def _teacher_bundle(self, agent_idx: int, data: dict[str, Tensor]) -> TeacherBundle:
-        neighbors = list(self.neighbors[agent_idx])
+        neighbors = list(self._epoch_neighbors[agent_idx])
         if not neighbors:
             empty = torch.zeros(0, 0, self.act_dim, device=self.device)
             return TeacherBundle(neighbors=[], teacher_mu=empty, teacher_log_std=empty)
@@ -985,7 +1080,7 @@ class SnapshotDistillBase(IPPO):
         out: dict[str, Tensor],
     ) -> Tensor:
         zero = torch.zeros((), device=mb_obs.device, dtype=mb_obs.dtype)
-        if self.cfg.distill.aggregation != "sum":
+        if not self._uses_loss_path:
             return zero  # handled in _apply_extra_gradients
         terms = self._social_terms(agent_idx, out, idx)
         if terms is None:
@@ -1005,7 +1100,7 @@ class SnapshotDistillBase(IPPO):
         over the full parameter list would error on the value head, which the
         distillation term never touches.
         """
-        if self.cfg.distill.aggregation == "sum":
+        if self._uses_loss_path:
             return None
         terms = self._social_terms(agent_idx, out, idx)
         if terms is None or self._beta == 0.0:
@@ -1017,6 +1112,7 @@ class SnapshotDistillBase(IPPO):
             grads = torch.autograd.grad(terms[j], params, retain_graph=True)
             per_edge.append(torch.cat([g.reshape(-1) for g in grads]))
         stacked = torch.stack(per_edge)
+        stacked = self._corrupt_byzantine_edges(agent_idx, stacked)
         aggregated = aggregate(
             stacked,
             self.cfg.distill.aggregation,

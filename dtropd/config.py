@@ -32,6 +32,7 @@ __all__ = [
     "DistillConfig",
     "InstrumentConfig",
     "GraphConfig",
+    "StressConfig",
     "TrainConfig",
     "Config",
     "ConfigError",
@@ -588,6 +589,118 @@ class InstrumentConfig:
 
 
 @dataclass
+class StressConfig:
+    """Phase 7 stressors: Byzantine agents, dropout, motor failures.
+
+    SPEC Sec. 5 Phase 7 and H6. All default to *off*, so an unconfigured run is
+    the unstressed baseline and `f = 0` is a real cell of the H6 sweep rather
+    than a separate code path.
+
+    **Threat model, stated rather than implied.** Byzantine agents are
+    *omniscient*: the adaptive adversary is constructed from the honest
+    gradients of the round it is attacking. That is the strongest adversary in
+    the standard model, and it is the one H6 is worth running against -- a
+    defence that only survives a blind adversary has not been tested. It is also
+    why `adaptive` is not merely `gaussian` with a different scale: it is
+    *fitted* to the honest distribution so that norm- and distance-based
+    defences see nothing unusual.
+    """
+
+    # --- Byzantine agents (H6) --------------------------------------------- #
+    #: Fraction of agents that are Byzantine. SPEC H6 sweeps {0,.1,.2,.3,.4,.5}.
+    byzantine_fraction: float = 0.0
+    #: none      -- no attack (f is ignored)
+    #: sign_flip -- negate the honest gradient; loud, caught by most defences
+    #: gaussian  -- large isotropic noise; the classic "obvious" attack
+    #: adaptive  -- stay inside the honest range and bias the consensus (SPEC
+    #:              Phase 7's "mimics honest gradients from inside the honest
+    #:              range"). Perturbs by a fraction of the honest coordinate-wise
+    #:              spread, chosen to survive trimming.
+    byzantine_mode: str = "none"
+    #: Attack magnitude. For `adaptive` this is in units of the honest
+    #: coordinate-wise standard deviation, so < 1 keeps it inside the range.
+    byzantine_scale: float = 0.5
+    #: None -> derived from the master seed, so the Byzantine set is fixed per
+    #: run but not identical across seeds.
+    byzantine_seed: int | None = None
+
+    # --- communication dropout --------------------------------------------- #
+    #: Probability an edge fails to deliver its snapshot in a given epoch.
+    #: Applied per (i, j) ordered pair, so delivery can fail asymmetrically.
+    comm_dropout: float = 0.0
+
+    # --- motor failures ----------------------------------------------------- #
+    #: Fraction of agents whose actuators are dead (actions zeroed by the env).
+    motor_failure_fraction: float = 0.0
+    #: If true, the failed set is redrawn each episode instead of held fixed.
+    motor_failure_resample: bool = False
+
+    _BYZANTINE_MODES = ("none", "sign_flip", "gaussian", "adaptive")
+
+    @property
+    def active(self) -> bool:
+        """True when any stressor is on -- used to skip cost when it is not."""
+        return bool(
+            self.byzantine_agents_enabled
+            or self.comm_dropout > 0.0
+            or self.motor_failure_fraction > 0.0
+        )
+
+    @property
+    def byzantine_agents_enabled(self) -> bool:
+        return self.byzantine_mode != "none" and self.byzantine_fraction > 0.0
+
+    def n_byzantine(self, n_agents: int) -> int:
+        """How many agents are Byzantine, rounded down.
+
+        Rounding down matters: at ``f = 0.5`` with an even ``N`` this gives
+        exactly half, and a defence is not expected to survive a majority. It
+        also means a small ``f`` on a small ``N`` gives *zero* Byzantine agents
+        rather than silently promoting one, which would make the `f` axis of the
+        H6 curve lie about what was run.
+        """
+        if not self.byzantine_agents_enabled:
+            return 0
+        return int(self.byzantine_fraction * n_agents)
+
+    def validate(self, n_agents: int) -> list[str]:
+        out: list[str] = []
+        if self.byzantine_mode not in self._BYZANTINE_MODES:
+            raise ConfigError(
+                f"stress.byzantine_mode must be one of {self._BYZANTINE_MODES}"
+            )
+        if not 0.0 <= self.byzantine_fraction < 1.0:
+            raise ConfigError("stress.byzantine_fraction must be in [0, 1)")
+        if not 0.0 <= self.comm_dropout < 1.0:
+            raise ConfigError("stress.comm_dropout must be in [0, 1)")
+        if not 0.0 <= self.motor_failure_fraction < 1.0:
+            raise ConfigError("stress.motor_failure_fraction must be in [0, 1)")
+        if self.byzantine_scale < 0.0:
+            raise ConfigError("stress.byzantine_scale must be >= 0")
+
+        if self.byzantine_fraction > 0.0 and self.byzantine_mode == "none":
+            out.append(
+                f"byzantine_fraction={self.byzantine_fraction} but byzantine_mode "
+                "is 'none', so no attack runs. This cell would be reported as a "
+                "Byzantine condition while being the unstressed baseline."
+            )
+        if self.byzantine_agents_enabled and self.n_byzantine(n_agents) == 0:
+            out.append(
+                f"byzantine_fraction={self.byzantine_fraction} on {n_agents} agents "
+                "rounds down to 0 Byzantine agents; this cell is the f=0 baseline "
+                "under a different label."
+            )
+        if self.byzantine_mode == "adaptive" and self.byzantine_scale > 1.0:
+            out.append(
+                f"byzantine_scale={self.byzantine_scale} exceeds one honest "
+                "standard deviation, so the 'adaptive' adversary leaves the "
+                "honest range and stops being adaptive -- that is the 'gaussian' "
+                "attack with extra steps."
+            )
+        return out
+
+
+@dataclass
 class GraphConfig:
     """Undirected communication graph G over the agents (SPEC Sec. 2)."""
 
@@ -661,6 +774,7 @@ class Config:
     distill: DistillConfig = field(default_factory=DistillConfig)
     instrument: InstrumentConfig = field(default_factory=InstrumentConfig)
     graph: GraphConfig = field(default_factory=GraphConfig)
+    stress: StressConfig = field(default_factory=StressConfig)
     train: TrainConfig = field(default_factory=TrainConfig)
     notes: str = ""
 
@@ -686,6 +800,7 @@ class Config:
         ]
         msgs += [f"instrument: {m}" for m in self.instrument.validate()]
         msgs += [f"graph: {m}" for m in self.graph.validate(self.env.n_agents)]
+        msgs += [f"stress: {m}" for m in self.stress.validate(self.env.n_agents)]
         msgs += [f"train: {m}" for m in self.train.validate()]
 
         steps = self.train.steps_per_env or self.env.max_cycles

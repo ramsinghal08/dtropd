@@ -530,11 +530,18 @@ class SyncVectorEnv:
         seed: int = 0,
         *,
         autoreset: bool = True,
+        motor_failures: Sequence[int] | None = None,
     ):
         self.cfg = cfg
         self.num_envs = int(num_envs)
         self.autoreset = autoreset
         self.envs = [CooperativeCaptureEnv(cfg, seed=seed + 1000 * i) for i in range(self.num_envs)]
+        # Phase 7 stressor: dead actuators. Applied to every copy so the failed
+        # set is a property of the run, not of one environment instance.
+        self.motor_failures = sorted(motor_failures or [])
+        if self.motor_failures:
+            for env in self.envs:
+                env.set_motor_failure(self.motor_failures)
         self.n_agents = cfg.n_agents
         self.obs_dim = cfg.obs_dim
         self.act_dim = cfg.act_dim
@@ -588,6 +595,11 @@ class SyncVectorEnv:
                 info = dict(info)
                 info["episode"] = {
                     "return": float(self._episode_returns[i].mean()),
+                    # Per-agent, so a subset can be averaged: H6 reports the
+                    # HONEST agents' return, and folding the saboteurs into the
+                    # headline number would measure the attack's self-harm
+                    # alongside the defence's success.
+                    "agent_returns": self._episode_returns[i].copy(),
                     "captures": float(self._episode_captures[i]),
                     "length": int(self._episode_length[i]),
                     "zone_returns": self._episode_zone_returns[i].copy(),

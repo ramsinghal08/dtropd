@@ -607,3 +607,60 @@ independently:
 The cross-version label is rendered onto the figure itself, not only into
 `report.json`, since a figure is where it is most likely to be read without the
 report open beside it.
+
+---
+
+## 13. Amendments and locked decisions — 2026-08-05 (fourth set)
+
+### D14 — H7's gate is stated here and nowhere else
+
+Two statements of when H7 may run had drifted apart:
+
+* an **instruction** given while Phase 6 was being built -- *"do not run H7;
+  Phase 6 builds the harness, Phase 7 runs the experiment"*;
+* **SPEC Sec. 5**, which places only **robustness + scale** in Phase 7 and
+  attaches H7 to Phase 6's acceptance criterion.
+
+**For the record: the Phase 7 gate was a sequencing choice, not a SPEC
+requirement.** It was made to stop a preliminary multi-seed look from biasing
+later interpretation, which is a good reason, but it was never written into the
+build order, so the build order and the instruction disagreed. Neither was
+wrong; they were two different documents.
+
+**The gate, stated once, superseding both.** H7 runs when **both** hold:
+
+1. **The D7 sensitivity grid has been derived on the actual H7 environment and
+   confirmed.** Not the literal values from any earlier environment
+   configuration -- see D7-AMENDED. The grid is an input to H7, so it cannot be
+   chosen after seeing H7's outcome.
+2. **The harness has been load-tested by H6 and H4/H5.** Those sweeps exercise
+   resume, multi-seed pairing and the report path at real scale. Discovering a
+   harness defect *during* the headline run is how a headline run gets repeated,
+   and a repeated run is a run whose first outcome is already known.
+
+Phase membership is *not* a gate. H7 does not require Phase 7 to be complete,
+only these two conditions. Anything else that reads like a gate on H7 elsewhere
+in this document is superseded by this decision.
+
+### D15 — The scale sweep's cap is asymmetric, and the asymmetry is the point
+
+SPEC Sec. 5 asks for `N ∈ {4,8,12,24,48}`. Cost does not grow the same way in
+the two hypotheses that use it, so a single cap would either waste compute or
+throw away the measurement that matters most:
+
+| hypothesis | topology | edges | cap |
+|---|---|---|---|
+| **H4** — simultaneity penalty grows with `N` | densely coupled (complete) | `O(N²)` | **N ≤ 24** |
+| **H5** — size-independence under locality | fixed-degree | `O(N·d)` | **N ≤ 48** |
+
+H4's prediction is that the gap is *roughly linear in N*; a slope is
+identifiable from `{4, 8, 12, 24}`, and `N=48` on a complete graph costs
+roughly four times `N=24` for one more point on a line. H5's prediction is that
+the per-capita gap is *flat in N*, and flatness is exactly the claim that a
+larger `N` tests hardest -- so H5 keeps `N=48`, which its fixed-degree topology
+makes affordable.
+
+**If `N=48` fixed-degree does not fit the execution environment, the measured
+limit is reported** -- the largest `N` that completed, with its wall-clock --
+rather than the point being silently dropped. A scale sweep that quietly stops
+early reads as a completed sweep.

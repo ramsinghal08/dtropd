@@ -364,26 +364,39 @@ def h5_locality(records: Sequence[dict]) -> HypothesisResult:
 
 
 def h6_byzantine(records: Sequence[dict], metadata: dict[str, Any] | None = None) -> HypothesisResult:
+    """One (aggregation, f, attack) cell of the H6 curve.
+
+    The reported return is the **honest agents'** return. Byzantine agents are
+    sabotaging, so averaging their returns into the headline number measures the
+    attack's self-harm alongside the defence's success and moves with `f` even
+    when the defence is perfect.
+    """
     metadata = metadata or {}
-    cfg = (metadata.get("config") or {}).get("distill", {})
-    ret = _series(records, "episode_return_mean")
+    config = metadata.get("config") or {}
+    distill = config.get("distill", {})
+    stress = config.get("stress", {})
+    honest = _series(records, "episode_return_mean_honest")
+    ret = honest or _series(records, "episode_return_mean")
     return HypothesisResult(
         "H6",
-        "Byzantine tolerance: final return vs Byzantine fraction",
+        "Byzantine tolerance: honest-agent final return vs Byzantine fraction",
         True,
         "multi-run",
         value={
-            "aggregation": cfg.get("aggregation"),
-            "byzantine_fraction": (metadata.get("config") or {})
-            .get("env", {})
-            .get("byzantine_fraction", 0.0),
+            "aggregation": distill.get("aggregation"),
+            "byzantine_fraction": stress.get("byzantine_fraction", 0.0),
+            "byzantine_mode": stress.get("byzantine_mode", "none"),
+            "byzantine_scale": stress.get("byzantine_scale"),
+            "return_is_honest_only": bool(honest),
             "final_return": ret[-1] if ret else float("nan"),
             "final_return_ci_over_epochs": bootstrap_ci(ret[-5:]) if ret else {},
         },
         note=(
-            "this run contributes one (aggregation, f) cell; the H6 curve is the "
-            "sweep over f in {0,.1,.2,.3,.4,.5} x {trimmed_mean, sum}, which "
-            "Phase 7 runs. Every field it needs is present per run."
+            "this run contributes one (aggregation, f, attack) cell; the H6 curve "
+            "is the sweep over f in {0,.1,.2,.3,.4,.5} x {trimmed_mean, sum} x "
+            "{sign_flip, adaptive}. The adaptive adversary is the one the "
+            "prediction is worth testing against -- the loud attacks are caught "
+            "by trimming on magnitude alone."
         ),
     )
 
