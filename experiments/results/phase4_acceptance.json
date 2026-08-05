@@ -1,0 +1,419 @@
+{
+  "acceptance": "Phase 4 -- baselines",
+  "config": "/home/user/dtropd/experiments/configs/phase4_homogeneous.yaml",
+  "seeds": [
+    0,
+    1,
+    2
+  ],
+  "criteria": {
+    "B1_all_algorithms_train_end_to_end": {
+      "runs": [
+        {
+          "algo": "ippo",
+          "seed": 0,
+          "epochs_completed": 60,
+          "all_metrics_finite": true,
+          "checkpoint_written": true,
+          "reward_spec_version": "v1",
+          "final_return": -23.81991930381377,
+          "random_return": -60.57958367154122,
+          "improvement": 36.75966436772745,
+          "max_explained_variance": 0.8713575984551744,
+          "wall_clock_seconds": 99.0056700706482,
+          "trust_weight_mean": null,
+          "beta": null,
+          "calibrated_delta_base": null,
+          "passed": true
+        },
+        {
+          "algo": "ippo",
+          "seed": 1,
+          "epochs_completed": 60,
+          "all_metrics_finite": true,
+          "checkpoint_written": true,
+          "reward_spec_version": "v1",
+          "final_return": -33.65319812833536,
+          "random_return": -63.241721522404255,
+          "improvement": 29.588523394068893,
+          "max_explained_variance": 0.8624192727784642,
+          "wall_clock_seconds": 103.34083652496338,
+          "trust_weight_mean": null,
+          "beta": null,
+          "calibrated_delta_base": null,
+          "passed": true
+        },
+        {
+          "algo": "ippo",
+          "seed": 2,
+          "epochs_completed": 60,
+          "all_metrics_finite": true,
+          "checkpoint_written": true,
+          "reward_spec_version": "v1",
+          "final_return": -25.114278586547158,
+          "random_return": -62.2339796468931,
+          "improvement": 37.11970106034594,
+          "max_explained_variance": 0.8790843556476395,
+          "wall_clock_seconds": 106.296142578125,
+          "trust_weight_mean": null,
+          "beta": null,
+          "calibrated_delta_base": null,
+          "passed": true
+        },
+        {
+          "algo": "mappo",
+          "seed": 0,
+          "epochs_completed": 60,
+          "all_metrics_finite": true,
+          "checkpoint_written": true,
+          "reward_spec_version": "v1",
+          "final_return": -27.223545923381465,
+          "random_return": -60.57958367154122,
+          "improvement": 33.35603774815976,
+          "max_explained_variance": 0.9259508166519602,
+          "wall_clock_seconds": 136.91643357276917,
+          "trust_weight_mean": null,
+          "beta": null,
+          "calibrated_delta_base": null,
+          "passed": true
+        },
+        {
+          "algo": "mappo",
+          "seed": 1,
+          "epochs_completed": 60,
+          "all_metrics_finite": true,
+          "checkpoint_written": true,
+          "reward_spec_version": "v1",
+          "final_return": -34.301041521357206,
+          "random_return": -63.241721522404255,
+          "improvement": 28.94068000104705,
+          "max_explained_variance": 0.9279997686427629,
+          "wall_clock_seconds": 139.84721875190735,
+          "trust_weight_mean": null,
+          "beta": null,
+          "calibrated_delta_base": null,
+          "passed": true
+        },
+        {
+          "algo": "mappo",
+          "seed": 2,
+          "epochs_completed": 60,
+          "all_metrics_finite": true,
+          "checkpoint_written": true,
+          "reward_spec_version": "v1",
+          "final_return": -27.554424989096994,
+          "random_return": -62.2339796468931,
+          "improvement": 34.6795546577961,
+          "max_explained_variance": 0.9440159678983466,
+          "wall_clock_seconds": 139.22786498069763,
+          "trust_weight_mean": null,
+          "beta": null,
+          "calibrated_delta_base": null,
+          "passed": true
+        },
+        {
+          "algo": "happo",
+          "seed": 0,
+          "epochs_completed": 60,
+          "all_metrics_finite": true,
+          "checkpoint_written": true,
+          "reward_spec_version": "v1",
+          "final_return": -25.841577609073823,
+          "random_return": -60.57958367154122,
+          "improvement": 34.7380060624674,
+          "max_explained_variance": 0.8664110125725504,
+          "wall_clock_seconds": 118.39719319343567,
+          "trust_weight_mean": null,
+          "beta": null,
+          "calibrated_delta_base": null,
+          "passed": true
+        },
+        {
+          "algo": "happo",
+          "seed": 1,
+          "epochs_completed": 60,
+          "all_metrics_finite": true,
+          "checkpoint_written": true,
+          "reward_spec_version": "v1",
+          "final_return": -29.765831253180398,
+          "random_return": -63.241721522404255,
+          "improvement": 33.475890269223854,
+          "max_explained_variance": 0.8724567389006389,
+          "wall_clock_seconds": 104.33580899238586,
+          "trust_weight_mean": null,
+          "beta": null,
+          "calibrated_delta_base": null,
+          "passed": true
+        },
+        {
+          "algo": "happo",
+          "seed": 2,
+          "epochs_completed": 60,
+          "all_metrics_finite": true,
+          "checkpoint_written": true,
+          "reward_spec_version": "v1",
+          "final_return": -21.38826700104465,
+          "random_return": -62.2339796468931,
+          "improvement": 40.84571264584845,
+          "max_explained_variance": 0.8815272478403853,
+          "wall_clock_seconds": 119.81643223762512,
+          "trust_weight_mean": null,
+          "beta": null,
+          "calibrated_delta_base": null,
+          "passed": true
+        },
+        {
+          "algo": "naive_distill",
+          "seed": 0,
+          "epochs_completed": 60,
+          "all_metrics_finite": true,
+          "checkpoint_written": true,
+          "reward_spec_version": "v1",
+          "final_return": -35.21715079465566,
+          "random_return": -60.57958367154122,
+          "improvement": 25.362432876885563,
+          "max_explained_variance": 0.854989062438066,
+          "wall_clock_seconds": 119.14007019996643,
+          "trust_weight_mean": 1.0,
+          "beta": 0.05,
+          "calibrated_delta_base": null,
+          "passed": true
+        },
+        {
+          "algo": "naive_distill",
+          "seed": 1,
+          "epochs_completed": 60,
+          "all_metrics_finite": true,
+          "checkpoint_written": true,
+          "reward_spec_version": "v1",
+          "final_return": -45.58513037599957,
+          "random_return": -63.241721522404255,
+          "improvement": 17.656591146404686,
+          "max_explained_variance": 0.8466096922640439,
+          "wall_clock_seconds": 119.958651304245,
+          "trust_weight_mean": 1.0,
+          "beta": 0.05,
+          "calibrated_delta_base": null,
+          "passed": true
+        },
+        {
+          "algo": "naive_distill",
+          "seed": 2,
+          "epochs_completed": 60,
+          "all_metrics_finite": true,
+          "checkpoint_written": true,
+          "reward_spec_version": "v1",
+          "final_return": -30.387633405505785,
+          "random_return": -62.2339796468931,
+          "improvement": 31.846346241387312,
+          "max_explained_variance": 0.8573628008172826,
+          "wall_clock_seconds": 126.05006718635559,
+          "trust_weight_mean": 1.0,
+          "beta": 0.05,
+          "calibrated_delta_base": null,
+          "passed": true
+        },
+        {
+          "algo": "dtropd",
+          "seed": 0,
+          "epochs_completed": 60,
+          "all_metrics_finite": true,
+          "checkpoint_written": true,
+          "reward_spec_version": "v1",
+          "final_return": -34.5061283466119,
+          "random_return": -60.57958367154122,
+          "improvement": 26.07345532492932,
+          "max_explained_variance": 0.8602292296562899,
+          "wall_clock_seconds": 133.22829151153564,
+          "trust_weight_mean": 0.8065534830093384,
+          "beta": 0.05,
+          "calibrated_delta_base": 0.02179238386452198,
+          "passed": true
+        },
+        {
+          "algo": "dtropd",
+          "seed": 1,
+          "epochs_completed": 60,
+          "all_metrics_finite": true,
+          "checkpoint_written": true,
+          "reward_spec_version": "v1",
+          "final_return": -46.10771442527816,
+          "random_return": -63.241721522404255,
+          "improvement": 17.134007097126094,
+          "max_explained_variance": 0.8331498535007263,
+          "wall_clock_seconds": 124.14504718780518,
+          "trust_weight_mean": 0.8496779203414917,
+          "beta": 0.05,
+          "calibrated_delta_base": 0.025131954811513424,
+          "passed": true
+        },
+        {
+          "algo": "dtropd",
+          "seed": 2,
+          "epochs_completed": 60,
+          "all_metrics_finite": true,
+          "checkpoint_written": true,
+          "reward_spec_version": "v1",
+          "final_return": -31.965884804503943,
+          "random_return": -62.2339796468931,
+          "improvement": 30.268094842389154,
+          "max_explained_variance": 0.8617850657730125,
+          "wall_clock_seconds": 127.10024070739746,
+          "trust_weight_mean": 0.8436104655265808,
+          "beta": 0.05,
+          "calibrated_delta_base": 0.026563504710793495,
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "algorithms": [
+        "dtropd",
+        "happo",
+        "ippo",
+        "mappo",
+        "naive_distill"
+      ]
+    },
+    "B2_shared_hyperparameters": {
+      "diffs_vs_ippo": {
+        "mappo": [
+          "train.algo: 'ippo' -> 'mappo'"
+        ],
+        "happo": [
+          "train.algo: 'ippo' -> 'happo'"
+        ],
+        "naive_distill": [
+          "distill.enabled: False -> True",
+          "train.algo: 'ippo' -> 'naive_distill'"
+        ],
+        "dtropd": [
+          "distill.enabled: False -> True",
+          "train.algo: 'ippo' -> 'dtropd'"
+        ]
+      },
+      "allowed_keys": [
+        "distill.enabled",
+        "train.algo"
+      ],
+      "unexpected": {},
+      "passed": true
+    },
+    "B3_identical_initialisation": {
+      "identical_to_ippo": {
+        "mappo": true,
+        "happo": true,
+        "naive_distill": true,
+        "dtropd": true
+      },
+      "passed": true
+    },
+    "B4_ippo_regression_vs_phase2": {
+      "reference": "tests/data/ippo_phase2_reference.json",
+      "generated_on_commit": "011de8f (Phase 2, pre-refactor)",
+      "metrics_compared": [
+        "clip_fraction",
+        "entropy",
+        "episode_return_mean",
+        "explained_variance",
+        "inner_epochs_used",
+        "mean_sigma",
+        "policy_loss",
+        "update_kl",
+        "value_loss"
+      ],
+      "max_abs_diff": 0.0,
+      "mismatched_metrics": [],
+      "passed": true
+    }
+  },
+  "passed": true,
+  "per_algorithm": {
+    "ippo": {
+      "improvements": [
+        36.75966436772745,
+        29.588523394068893,
+        37.11970106034594
+      ],
+      "max_explained_variance": [
+        0.8713575984551744,
+        0.8624192727784642,
+        0.8790843556476395
+      ],
+      "wall_clock_seconds": [
+        99.0056700706482,
+        103.34083652496338,
+        106.296142578125
+      ]
+    },
+    "mappo": {
+      "improvements": [
+        33.35603774815976,
+        28.94068000104705,
+        34.6795546577961
+      ],
+      "max_explained_variance": [
+        0.9259508166519602,
+        0.9279997686427629,
+        0.9440159678983466
+      ],
+      "wall_clock_seconds": [
+        136.91643357276917,
+        139.84721875190735,
+        139.22786498069763
+      ]
+    },
+    "happo": {
+      "improvements": [
+        34.7380060624674,
+        33.475890269223854,
+        40.84571264584845
+      ],
+      "max_explained_variance": [
+        0.8664110125725504,
+        0.8724567389006389,
+        0.8815272478403853
+      ],
+      "wall_clock_seconds": [
+        118.39719319343567,
+        104.33580899238586,
+        119.81643223762512
+      ]
+    },
+    "naive_distill": {
+      "improvements": [
+        25.362432876885563,
+        17.656591146404686,
+        31.846346241387312
+      ],
+      "max_explained_variance": [
+        0.854989062438066,
+        0.8466096922640439,
+        0.8573628008172826
+      ],
+      "wall_clock_seconds": [
+        119.14007019996643,
+        119.958651304245,
+        126.05006718635559
+      ]
+    },
+    "dtropd": {
+      "improvements": [
+        26.07345532492932,
+        17.134007097126094,
+        30.268094842389154
+      ],
+      "max_explained_variance": [
+        0.8602292296562899,
+        0.8331498535007263,
+        0.8617850657730125
+      ],
+      "wall_clock_seconds": [
+        133.22829151153564,
+        124.14504718780518,
+        127.10024070739746
+      ]
+    }
+  },
+  "tuning_statement": "No hyperparameter search was performed for any algorithm. Every algorithm uses the Phase 2 IPPO settings unchanged, from one shared config file (SPEC Sec. 9 rule 5).",
+  "not_a_result": "Returns are reported to show that training happened. This is the homogeneous environment with 3 seeds; SPEC Sec. 7 requires >= 10 seeds with paired seeds and bootstrap CIs, and H7 is gated at Phase 5. Nothing here is a comparison between algorithms."
+}

@@ -219,3 +219,139 @@ If any of these appear, an old bug has returned:
 5. **No hidden hyperparameter tuning** of D-TrOPD without equal tuning of baselines. Unfair comparisons are worse than no comparisons.
 6. **CPU smoke path always works:** every feature must be runnable in a <2-minute 2-agent CPU config for debugging.
 7. Commit per phase with a message naming the phase and its acceptance result.
+
+---
+
+## 10. Locked decisions — 2026-08-05
+
+These resolve ambiguities surfaced during Phases 0–3. They are **final**: they
+have the same standing as Sec. 2 and Sec. 3, and changing one requires the same
+deliberation as changing an invariant. Each names the code that enforces it.
+
+### D1 — Headline arm is the *calibrated* configuration; calibration is part of the method
+
+Measurement from Phase 3: with the shipped `delta_base = 0.1`, `gamma = 1.0`,
+the observed social divergences on the cooperative-capture environment are
+`median D_ij = 0.026` over 1056 edges, giving `mean w_ij = 0.987`. The trust
+gate is inert, and D-TrOPD at those settings **is** NaiveDistill.
+
+H7 and every headline comparison must therefore run on a calibrated
+configuration. Calibration is a **documented procedure**, not a tuned constant:
+
+```
+1. Run a calibration window with beta held at exactly 0, so the gate is
+   inactive and calibration cannot influence the policies it measures. The
+   beta warmup ramp starts after this window, at its full configured length,
+   so invariant I8 is unaffected. (A linear ramp is not zero after its first
+   epoch, which is why the calibration window is not merely "the warmup".)
+2. Collect every observed D_ij over that window.
+3. delta_base := median(D_ij)
+4. gamma      := -ln(0.5) / [ softplus(p95(D_ij) - delta_base)
+                              - softplus(-delta_base) ]
+   i.e. an edge at the 95th percentile of observed divergence is attenuated
+   to w = 0.5.
+```
+
+A per-task magic constant is a reviewer objection; a measurement procedure with
+a stated rule is not. Reproducible two ways, both required to exist:
+
+* in-run, `distill.calibration: warmup` — the procedure above executes inside
+  training during the beta-warmup window;
+* offline, one command — `python run.py calibrate --config <in> --out <out>`
+  writes a calibrated config with its provenance recorded in `notes`.
+
+Defaults stay uncalibrated so no existing config silently changes; the shipped
+headline configs set `calibration: warmup`. `DTrOPD` emits a loud warning
+whenever mean `w_ij > 0.95` with `beta > 0`, so an inert gate can never pass
+unnoticed again.
+
+### D2 — `env.local_ratio` stays at 0.5 for the primary condition
+
+The pure-global-reward variant (`local_ratio: 0.0`) is a **secondary, clearly
+labelled condition** and must never be headlined.
+
+Rationale, recorded so it is not relitigated: under a pure global reward one
+agent in twelve moves the shared return by roughly 1/9 and IPPO does not learn
+at all. That produces a floored baseline, which is a weak comparison. More
+importantly, the pure-global failure is a **credit-assignment** failure, and
+this work is about **distribution-mismatch** failure. Beating a baseline that
+failed for the wrong reason proves nothing about the mechanism under test.
+
+### D3 — Reward shape is frozen at `reward_spec_version = "v1"`
+
+The environment asserts the version it implements
+(`CooperativeCaptureEnv.REWARD_SPEC_VERSION`); a config asking for any other
+version fails at construction. Every run stamps `reward_spec_version` into its
+`metadata.json`. Any change to the definition below requires a version bump and
+**invalidates every stored curve**.
+
+**Reward specification v1** (verbatim; `dtropd/env.py::_rewards_and_info`).
+Symbols: `N` agents at positions `x_i`, `T` targets at positions `y_k`,
+`m = capture_group_size`, `d(i,k) = ||x_i - y_k||`.
+
+```
+For each target k, let n_k(1) <= n_k(2) <= ... <= n_k(m) be the m smallest
+values of d(i,k) over all agents i:
+
+  shaping_k = - (1/m) * sum_{r=1..m} n_k(r)
+  captured_k = 1 if n_k(m) <= capture_radius else 0
+
+Collisions are unordered agent pairs closer than 2 * agent_size:
+
+  C     = #{ (i,j) : i < j, ||x_i - x_j|| < 2 * agent_size }
+  c_i   = #{ j != i : ||x_i - x_j|| < 2 * agent_size }
+
+Global (shared) term:
+
+  G = shaping_weight * sum_k shaping_k
+    + capture_bonus  * sum_k captured_k
+    - collision_penalty * C
+
+Per-agent local term (no capture bonus: capture is always a shared signal):
+
+  L_i = - shaping_weight * min_k d(i,k)
+        - collision_penalty * c_i
+
+Reward delivered to agent i on this timestep:
+
+  r_i = (1 - local_ratio) * G + local_ratio * L_i
+```
+
+Defaults: `shaping_weight = 1.0`, `capture_bonus = 1.0`,
+`collision_penalty = 0.1`, `local_ratio = 0.5`, `capture_radius = 0.3`,
+`capture_group_size = 3`, `agent_size = 0.05`. Episodes are fixed length
+(`max_cycles`): they truncate, never terminate, so values are bootstrapped at
+the horizon.
+
+### D4 — NaiveDistill is its own algorithm class
+
+NaiveDistill is **not** expressible as D-TrOPD with `gamma_attenuation = 0` or
+with an inflated `delta_base`. It is an explicit class in which `w_ij = 1`
+structurally: no trust radius, no attenuation, no code path for either.
+
+Reason: if the baseline is reachable from the method by a config value, then
+"NaiveDistill" and "miscalibrated D-TrOPD" are the same run, and the headline
+comparison is ambiguous by construction — which is exactly the failure D1
+documents. `tests/test_baselines.py` asserts that `NaiveDistill` exposes no
+radius or attenuation attribute.
+
+### D5 — Adaptive `delta_base` is an ablation arm, never the default
+
+`D_ij` drifts upward during training (0.0001 -> 0.038 over 40 epochs on the
+heterogeneous environment), so a *fixed* `delta_base` means the gate tightens
+over training for reasons unrelated to the mechanism the theory describes.
+
+`distill.radius_reference` selects between:
+
+* `fixed` (**default**) — `delta_base` is a constant, as Sec. 2.2 states;
+* `running_quantile` — `delta_base` tracks a running quantile of observed
+  `D_ij`, making trust *relative*: "unusually divergent for this swarm right
+  now" rather than absolute.
+
+Both arms log the `D_ij` distribution per epoch (p5/p50/p95 and drift relative
+to the first epoch) so the confound is measured either way.
+
+**`running_quantile` is not what the theory currently states.** Adopting it as
+the default would require re-deriving the scale-invariance proposition of
+Sec. 2.2, because a radius defined from a running quantile of `D_ij` is no
+longer a fixed function of the agent's own nonstationarity.

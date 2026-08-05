@@ -72,6 +72,11 @@ class EnvConfig:
     capture_radius: float = 0.3
     max_cycles: int = 50
 
+    # SPEC Sec. 10 / D3: the reward definition is frozen. The environment
+    # asserts that it implements this version; any change to the reward shape
+    # requires a version bump and invalidates every stored curve.
+    reward_spec_version: str = "v1"
+
     # --- reward accounting -------------------------------------------------
     shaping_weight: float = 1.0
     capture_bonus: float = 1.0
@@ -139,6 +144,8 @@ class EnvConfig:
             )
         if self.max_cycles < 1:
             raise ConfigError("env.max_cycles must be >= 1")
+        if not isinstance(self.reward_spec_version, str) or not self.reward_spec_version:
+            raise ConfigError("env.reward_spec_version must be a non-empty string")
         return warnings_out
 
     @property
@@ -263,6 +270,16 @@ class DistillConfig:
     delta_base: float = 0.1
     gamma_attenuation: float = 1.0  # gamma in w_ij = exp(-gamma * [...])
     attenuation: str = "continuous"  # continuous | hard_switch | hard_cutoff
+    # SPEC Sec. 10 / D1: calibration is a documented procedure, not a constant.
+    # "warmup" runs it inside training during the beta-warmup window, where
+    # beta = 0 so the measurement cannot influence the policies it measures.
+    calibration: str = "none"  # none | warmup
+    calibration_quantile: float = 0.5  # delta_base := this quantile of D_ij
+    calibration_tail_quantile: float = 0.95  # the edge pinned to target_w
+    calibration_target_w: float = 0.5
+    # SPEC Sec. 10 / D5: adaptive radius reference is an ablation arm.
+    radius_reference: str = "fixed"  # fixed | running_quantile
+    radius_reference_window: int = 10  # epochs of D_ij history for the quantile
     kl_direction: str = "reverse"  # invariant I2: reverse everywhere, always
     radius_signal: str = "nonstationarity"  # nonstationarity | value_variance | fixed
     trust_batch: str = "own"  # invariant I3: own | pooled
@@ -273,6 +290,8 @@ class DistillConfig:
     krum_byzantine: int = 1
 
     _ATTENUATIONS = ("continuous", "hard_switch", "hard_cutoff")
+    _CALIBRATIONS = ("none", "warmup")
+    _RADIUS_REFERENCES = ("fixed", "running_quantile")
     _RADIUS_SIGNALS = ("nonstationarity", "value_variance", "fixed")
     _TRUST_BATCHES = ("own", "pooled")
     _AGGREGATIONS = ("sum", "trimmed_mean", "geometric_median", "krum")
@@ -319,6 +338,23 @@ class DistillConfig:
             )
         if self.neighbor_selection == "top_k" and not self.top_k:
             raise ConfigError("distill.top_k must be set when neighbor_selection='top_k'")
+        if self.calibration not in self._CALIBRATIONS:
+            raise ConfigError(f"distill.calibration must be one of {self._CALIBRATIONS}")
+        if self.radius_reference not in self._RADIUS_REFERENCES:
+            raise ConfigError(
+                f"distill.radius_reference must be one of {self._RADIUS_REFERENCES}"
+            )
+        for name in ("calibration_quantile", "calibration_tail_quantile"):
+            if not 0.0 < getattr(self, name) < 1.0:
+                raise ConfigError(f"distill.{name} must lie in (0, 1)")
+        if self.calibration_tail_quantile <= self.calibration_quantile:
+            raise ConfigError(
+                "distill.calibration_tail_quantile must exceed calibration_quantile"
+            )
+        if not 0.0 < self.calibration_target_w < 1.0:
+            raise ConfigError("distill.calibration_target_w must lie in (0, 1)")
+        if self.radius_reference_window < 1:
+            raise ConfigError("distill.radius_reference_window must be >= 1")
         if self.beta_max < 0.0:
             raise ConfigError("distill.beta_max must be >= 0")
         if self.delta_base <= 0.0:
@@ -352,6 +388,14 @@ class DistillConfig:
             warnings_out.append(
                 "distill.neighbor_selection='top_k' reintroduces a discontinuity at "
                 "the selection boundary (SPEC Sec. 2.3); the default is 'all'."
+            )
+        if self.radius_reference == "running_quantile":
+            warnings_out.append(
+                "distill.radius_reference='running_quantile' is the D5 ablation arm. "
+                "It is NOT what the theory states: a radius defined from a running "
+                "quantile of D_ij is no longer a fixed function of the agent's own "
+                "nonstationarity, so the Sec. 2.2 scale-invariance proposition would "
+                "have to be re-derived before reporting it as D-TrOPD."
             )
         if self.enabled and self.beta_max > 0.0 and self.warmup_fraction == 0.0 and (
             self.warmup_epochs in (None, 0)

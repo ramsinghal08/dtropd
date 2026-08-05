@@ -84,9 +84,24 @@ class CooperativeCaptureEnv(_ParallelEnvBase):
 
     metadata = {"name": "cooperative_capture_v0", "is_parallelizable": True}
 
+    #: SPEC Sec. 10 / D3. The reward definition this class implements is frozen
+    #: and written out verbatim in SPEC Sec. 10. Changing the reward shape
+    #: requires bumping this string, which invalidates every stored curve --
+    #: which is the point: a silent reward change would make old and new runs
+    #: silently incomparable.
+    REWARD_SPEC_VERSION = "v1"
+
     def __init__(self, cfg: EnvConfig | None = None, seed: int | None = None):
         self.cfg = cfg or EnvConfig()
         self.cfg.validate()
+        if self.cfg.reward_spec_version != self.REWARD_SPEC_VERSION:
+            raise ValueError(
+                f"env.reward_spec_version={self.cfg.reward_spec_version!r} but this "
+                f"environment implements {self.REWARD_SPEC_VERSION!r}. The reward "
+                "definition is frozen (SPEC Sec. 10 / D3); a version mismatch means "
+                "the stored curves and this code disagree about what is being "
+                "optimised."
+            )
         self.n_agents = self.cfg.n_agents
         self.n_targets = self.cfg.n_targets
         self.obs_dim = self.cfg.obs_dim
@@ -376,6 +391,7 @@ class CooperativeCaptureEnv(_ParallelEnvBase):
             "captured": captured.copy(),
             "collisions": collisions,
             "mean_capture_distance": float(nearest.mean()),
+            "reward_spec_version": self.REWARD_SPEC_VERSION,
             "shaping": float(shaping.sum()),
             "zones": zones,
             "step": self._step_count,

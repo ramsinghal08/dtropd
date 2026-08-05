@@ -99,6 +99,8 @@ def train(
         cfg,
         seed,
         algo=cfg.train.algo,
+        # SPEC Sec. 10 / D3: every run records which frozen reward it optimised.
+        reward_spec_version=cfg.env.reward_spec_version,
         obs_dim=cfg.env.obs_dim,
         act_dim=cfg.env.act_dim,
         batch_size_per_agent=cfg.batch_size,

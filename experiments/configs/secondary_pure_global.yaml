@@ -1,0 +1,50 @@
+# SECONDARY CONDITION -- NOT A HEADLINE ARM (SPEC Sec. 10 / D2).
+#
+# Pure global team reward (local_ratio: 0.0). Recorded so the condition is
+# reproducible, and labelled so it cannot be mistaken for the primary result.
+#
+# Why it is secondary, per D2: under a pure global reward one agent in twelve
+# moves the shared return by roughly 1/9 and IPPO does not learn at all. That
+# floors the baseline, and -- more importantly -- the failure it produces is a
+# CREDIT-ASSIGNMENT failure, while this work is about DISTRIBUTION-MISMATCH
+# failure. Beating a baseline that failed for the wrong reason proves nothing
+# about the mechanism under test.
+#
+# Any result from this config must be reported as a secondary condition with
+# that caveat attached.
+notes: "SECONDARY CONDITION (SPEC D2): pure global reward, local_ratio=0.0. Not a headline arm."
+
+env:
+  n_agents: 12
+  n_targets: 3
+  capture_group_size: 3
+  max_cycles: 50
+  heterogeneous: true
+  local_ratio: 0.0
+  reward_spec_version: v1
+
+network:
+  hidden_sizes: [64, 64]
+
+ppo:
+  lr: 1.0e-3
+  inner_epochs: 4
+  num_minibatches: 4
+  kl_early_stop: 0.02
+
+distill:
+  enabled: false
+  kappa: 100.0
+
+graph:
+  topology: complete
+
+train:
+  algo: ippo
+  total_epochs: 150
+  num_envs: 40
+  seed: 0
+  device: cpu
+  eval_interval: 50
+  eval_episodes: 16
+  log_dir: runs/secondary_pure_global

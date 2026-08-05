@@ -219,7 +219,7 @@ def test_i3_social_divergence_uses_own_rollout_states():
     """D_ij must not move when *another* agent's rollout states change."""
     cfg = tiny_config(n_agents=4)
     algo, data = _prepared(cfg, seed=25)
-    baseline = algo._prepare_social(0, data).divergence.clone()
+    baseline = algo._prepare_epoch(0, data).divergence.clone()
 
     # Corrupt every other agent's slice of the buffer. Under 'own' this is
     # invisible to agent 0; under 'pooled' it would not be.
@@ -228,11 +228,11 @@ def test_i3_social_divergence_uses_own_rollout_states():
         algo.buffer.obs[:, :, other] = rng.normal(
             size=algo.buffer.obs[:, :, other].shape
         ).astype(np.float32)
-    after = algo._prepare_social(0, data).divergence
+    after = algo._prepare_epoch(0, data).divergence
     assert torch.equal(baseline, after), "D_ij saw another agent's states"
 
     algo.cfg.distill.trust_batch = "pooled"
-    pooled = algo._prepare_social(0, data).divergence
+    pooled = algo._prepare_epoch(0, data).divergence
     assert not torch.allclose(baseline, pooled), (
         "the pooled arm is indistinguishable from the own-rollout arm"
     )
@@ -242,7 +242,7 @@ def test_i3_social_loss_is_evaluated_on_own_states():
     """L_soc's teacher parameters are cached on the agent's own observations."""
     cfg = tiny_config(n_agents=3)
     algo, data = _prepared(cfg, seed=26)
-    state = algo._prepare_social(0, data)
+    state = algo._prepare_epoch(0, data)
     j, teacher = 0, algo.snapshots[state.neighbors[0]]
     mu_expected, log_std_expected = teacher(data["obs"])
     assert torch.allclose(state.teacher_mu[j], mu_expected)
@@ -321,14 +321,14 @@ def test_i5_distillation_trust_region_is_enforced():
     """A divergent peer is attenuated; both regions are live simultaneously."""
     cfg = tiny_config(n_agents=3, delta_base=0.05, gamma_attenuation=2.0)
     algo, data = _prepared(cfg, seed=27)
-    state = algo._prepare_social(0, data)
+    state = algo._prepare_epoch(0, data)
 
     # Push one neighbour far away in policy space; its weight must collapse.
     far = state.neighbors[0]
     with torch.no_grad():
         for p in algo.snapshots[far].parameters():
             p.add_(torch.randn_like(p) * 2.0)
-    after = algo._prepare_social(0, data)
+    after = algo._prepare_epoch(0, data)
     assert after.divergence[0] > state.divergence[0]
     assert after.weight[0] < state.weight[0]
     assert float(after.weight[0]) < 0.5
@@ -346,7 +346,7 @@ def test_i5_trust_weight_is_a_detached_gate():
     """w_ij is held constant through the inner loop; it is not a grad path."""
     cfg = tiny_config(n_agents=3)
     algo, data = _prepared(cfg, seed=28)
-    state = algo._prepare_social(0, data)
+    state = algo._prepare_epoch(0, data)
     assert not state.weight.requires_grad
     assert not state.divergence.requires_grad
     assert state.weight.grad_fn is None
@@ -395,7 +395,7 @@ def test_i6_teacher_parameters_are_detached_and_receive_no_gradient():
     assert all(not p.requires_grad for s in algo.snapshots for p in s.parameters())
 
     algo._beta = 0.5
-    algo._social[0] = algo._prepare_social(0, data)
+    algo._social[0] = algo._prepare_epoch(0, data)
     out = algo.agents[0].actor.evaluate_latent(data["obs"], data["latent"])
     idx = torch.arange(data["obs"].shape[0])
     loss = algo._extra_loss(0, algo.agents[0], data["obs"], idx, out)
@@ -419,7 +419,7 @@ def test_i7_attenuation_is_one_at_zero_divergence():
     # Make one neighbour an exact copy of the student: D_ij = 0 -> w_ij = 1.
     twin = algo.neighbors[0][0]
     algo.snapshots[twin].load_state_dict(algo.snapshots[0].state_dict())
-    state = algo._prepare_social(0, data)
+    state = algo._prepare_epoch(0, data)
     assert float(state.divergence[0]) == pytest.approx(0.0, abs=1e-6)
     assert float(state.weight[0]) == pytest.approx(1.0, abs=1e-6)
 

@@ -4,7 +4,11 @@ Implementation of D-TrOPD for networked multi-agent RL, plus baselines and a
 pre-registered experiment suite. `SPEC.md` is the authoritative specification;
 this README describes only what is built and how to run it.
 
-**Build status: Phases 0–3 complete. Phase 4 (baselines) not started.**
+**Build status: Phases 0–4 complete. Phase 5 (instrumentation) not started.**
+
+SPEC.md §10 records the **locked decisions** (D1–D5) that govern how these
+phases are configured and reported. They have the same standing as the
+invariants in §3.
 
 | Phase | Scope | State |
 |---|---|---|
@@ -12,7 +16,7 @@ this README describes only what is built and how to run it.
 | 1 | Env + networks + closed-form KL | ✅ |
 | 2 | IPPO | ✅ |
 | 3 | D-TrOPD core (radius, attenuation, social loss, β warmup) | ✅ |
-| 4 | Baselines (MAPPO, HAPPO, NaiveDistill) | ⬜ |
+| 4 | Baselines (MAPPO, HAPPO, NaiveDistill) | ✅ |
 | 5 | Instrumentation | ⬜ |
 | 6 | Experiment harness (rliable figures, paired seeds) | ⬜ |
 | 7 | Robustness + scale | ⬜ |
@@ -74,7 +78,7 @@ dtropd/
   networks.py    tanh-Gaussian actor, critic, policy_parameters() helper
   buffer.py      rollout storage, GAE (with time-limit bootstrapping)
   kl.py          closed-form Gaussian KL utilities (single source of truth)
-  algorithms.py  shared base class + IPPO (D-TrOPD & baselines land later)
+  algorithms.py  base class, IPPO, MAPPO, HAPPO, NaiveDistill, D-TrOPD
   robust.py      trimmed mean, geometric median, Krum
   train.py       training loop, logging, checkpointing, seeding
   evaluate.py    eval rollouts, metrics
@@ -84,9 +88,49 @@ dtropd/
 tests/           test_kl, test_env, test_invariants, test_attenuation, test_smoke, …
 experiments/
   configs/*.yaml
-  phase2_acceptance.py
+  phase2_acceptance.py  phase3_acceptance.py  phase4_acceptance.py
+  _ippo_reference_curve.py   # regenerates the Phase 2 golden curve
+tests/data/ippo_phase2_reference.json   # golden curve, made on commit 011de8f
 notebooks/D_TrOPD.ipynb
 ```
+
+## Algorithms
+
+| name | critic | update order | distillation |
+|---|---|---|---|
+| `ippo` | local `V_i(o_i)` | simultaneous | none |
+| `mappo` | centralised, over concatenated observations | simultaneous | none |
+| `happo` | local | **sequential, random order each epoch**, with the HAPPO importance factor | none |
+| `naive_distill` | local | simultaneous | every neighbour, `w_ij = 1` **structurally** |
+| `dtropd` | local (SPEC §2: no central critic) | simultaneous | trust-gated, `w_ij` from `D_ij` vs `δ_i` |
+
+`naive_distill` is its own class, not a D-TrOPD config (SPEC §10 / D4): it has
+no radius and no attenuation code path at all, so "NaiveDistill" and
+"miscalibrated D-TrOPD" can never be the same run.
+
+## Calibrating the attenuation (SPEC §10 / D1)
+
+`δ_base` and `γ` are the only D-TrOPD constants SPEC does not pin down, and a
+mis-set `δ_base` silently disables the whole mechanism. They are therefore
+**measured, not chosen**:
+
+```bash
+# offline: emit a calibrated config, with its provenance recorded in `notes`
+python run.py calibrate --config experiments/configs/dtropd_heterogeneous.yaml \
+    --epochs 10 --out experiments/configs/dtropd_heterogeneous_static.yaml
+```
+
+```yaml
+# in-run: the same procedure, executed during training
+distill:
+  calibration: warmup      # beta is held at exactly 0 for the window
+```
+
+Both paths call the same `calibrate_attenuation()`, so they cannot drift apart.
+`δ_base` is set to the median observed `D_ij` and `γ` so that a 95th-percentile
+edge is attenuated to `w = 0.5`. Headline configs set `calibration: warmup`;
+defaults stay uncalibrated so no existing config silently changes. D-TrOPD warns
+loudly whenever mean `w_ij > 0.95` with β > 0.
 
 ## The environment
 
@@ -154,8 +198,25 @@ learnable setting, and each can be reverted in one line.
 
 Points 2 and 3 are optimisation fixes with no algorithmic content. Point 1
 changes the task, so it is called out here rather than buried in a default.
+It is now settled by SPEC §10 / D2: `local_ratio = 0.5` is the primary
+condition, and `experiments/configs/secondary_pure_global.yaml` carries the
+pure-global variant as an explicitly-labelled secondary condition.
 
-### 4. δ_base and γ are *not* calibrated by default — and that matters
+### 4. δ_base and γ are measured, not chosen — and the window length matters
+
+*(Resolved by SPEC §10 / D1; the finding that prompted it is kept below because
+it is the reason the decision exists.)*
+
+New caveat surfaced while implementing the procedure: **the calibrated value
+depends on how long the calibration window is.** `D_ij` drifts upward during
+training, so measuring over 8 epochs gave `δ_base = 0.026` and over 10 epochs
+`δ_base = 0.049` on the same config and seed. That is D5's confound showing up
+inside D1's procedure. The window length is therefore a reported parameter of
+the method, recorded in the emitted config's `notes`, not an implementation
+detail. Both the fixed and `running_quantile` arms log the per-epoch `D_ij`
+percentiles and the drift ratio so this is always visible.
+
+### 4a. The original finding
 
 SPEC.md fixes the form of the attenuation but not its two constants. The
 shipped defaults (`delta_base: 0.1`, `gamma_attenuation: 1.0`) turn out to sit
@@ -282,3 +343,46 @@ The "clear margin" criterion is operationalised in that script (every seed
 must beat the random policy by ≥ 10 standard errors of the random baseline,
 every seed must improve, and every seed's critic explained variance must exceed
 0.3), and it prints the numbers it judged.
+
+### Judgment calls made while implementing D1–D5 and Phase 4
+
+5. **The calibration window holds β at exactly 0, and shifts the warmup ramp.**
+   D1's rationale requires the `D_ij` measurement to be taken with the gate
+   inactive. A linear β warmup is *not* zero after its first epoch, so reusing
+   the warmup window as the calibration window would have measured `D_ij` under
+   a partly-active gate — quietly violating the stated rationale. Instead the
+   calibration window pins β = 0 and the full-length warmup ramp starts after
+   it, so invariant I8 still gets a complete ramp. The alternatives were to
+   calibrate on epoch 0 alone (a much smaller sample) or to accept the
+   contamination; both seemed worse than shifting the ramp.
+
+6. **HAPPO keeps local critics, and includes the importance factor.** SPEC
+   describes HAPPO only as "sequential updates, random agent order re-sampled
+   each epoch". Two gaps had to be filled. First, the critic: HAPPO is
+   implemented with IPPO's *local* critics rather than a centralised one, so
+   that the sequential-update variable is isolated and MAPPO remains the arm
+   that varies critic centralisation. Second, the correction factor: a
+   sequential update without HAPPO's `M_i = Π_{j before i} π_j^new/π_j^old` has
+   no monotonic-improvement argument at all, which is the only interesting
+   property of updating sequentially — so it is implemented. The factor is
+   clamped to `[1e-4, 1e4]`, since a product over 12 agents can otherwise
+   overflow; the clamp is logged.
+
+7. **MAPPO concatenates in fixed agent-index order**, giving every agent the
+   *same* joint critic input at a transition. This keeps MAPPO's advantage over
+   IPPO purely a matter of critic information rather than asymmetric inputs.
+
+8. **Phase 4 uses one shared config file, not five.** `train.algo` (and the
+   structural `distill.enabled`) are the only per-algorithm overrides, and the
+   acceptance harness enumerates every field that differs and fails if anything
+   else does. "Shared hyperparameters" is then a property of the code rather
+   than of five YAML files staying in sync by inspection.
+
+9. **`run.py calibrate` runs the real training loop** rather than a separate
+   measurement path, so the offline command and `calibration: warmup` execute
+   the same code and cannot disagree about what the procedure is.
+
+**No hyperparameter search was performed for any algorithm.** Every algorithm in
+Phase 4 uses the Phase 2 IPPO settings unchanged (SPEC §9 rule 5). If tuning is
+done later for D-TrOPD, the same search must be run for MAPPO and HAPPO and
+documented.
