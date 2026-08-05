@@ -637,6 +637,8 @@ wrong; they were two different documents.
    resume, multi-seed pairing and the report path at real scale. Discovering a
    harness defect *during* the headline run is how a headline run gets repeated,
    and a repeated run is a run whose first outcome is already known.
+   *(Amended below — see D14-AMENDED. Condition 2 is satisfied; H6 is not
+   required for it.)*
 
 Phase membership is *not* a gate. H7 does not require Phase 7 to be complete,
 only these two conditions. Anything else that reads like a gate on H7 elsewhere
@@ -760,3 +762,64 @@ D15's fallback — report the measured limit if `N = 48` does not fit — is not
 needed. The edge counts show why the cap is asymmetric rather than arbitrary:
 `N = 24` on a complete graph carries nearly three times the edges of `N = 48`
 fixed-degree.
+
+---
+
+## 15. Amendments — 2026-08-05 (fifth set)
+
+### D14-AMENDED — the load-test gate names a property, not a particular sweep
+
+D14 condition 2 required the harness to be load-tested "by H6 and H4/H5". That
+named three sweeps when what it meant was a **property**: that the headline run
+should not be the first real exercise of the machinery.
+
+**The requirement, restated.** Condition 2 is satisfied by **any completed
+multi-seed sweep driven through the same launcher path** — `run.py sweep` →
+`build_plan` → `preflight` → `run_sweep` → manifest → `sweep_report`. That path
+is what H7 will use, and a sweep that has run it end to end has tested it.
+
+**Condition 2 is now satisfied.** `h4_scale` (20 cells, 4 arms x 5 seeds,
+9.0 min) and `h5_scale` (25 cells, 5 arms x 5 seeds, 16.1 min, out to `N = 48`)
+both completed through exactly that path. Between them they exercised
+auto-calibration grouped by environment fingerprint, the D6 refusal when no arm
+declares an artifact, multi-seed pairing, parallel workers, resume, manifest
+assembly and the report path — and they found four real defects in it, which is
+the strongest available evidence that the load-test did its job.
+
+**H6 is therefore NOT a gate on H7.** It remains a Phase 7 deliverable and a
+hypothesis in its own right; it is simply not load-bearing for the headline.
+Nothing about H6's *content* was ever the reason for condition 2 — Byzantine
+tolerance tells you nothing about whether the launcher works — so requiring it
+was over-specification, not caution.
+
+**What is unchanged.** Condition 1 stands untouched: H7 still requires the D7
+grid derived on the actual H7 environment **and confirmed**. That is a separate
+gate with a separate rationale, and it is not affected by this amendment.
+
+### D16 — H6 runs at full budget, elsewhere; a trimmed budget must earn its way in
+
+**H6 runs at the budget `h6_byzantine.yaml` already specifies**: 150 epochs,
+40 envs, 10 seeds, 16 arms, 160 cells. No epoch trim, no env trim, no seed cut.
+SPEC Sec. 7's ">= 10 seeds per configuration" is a reporting standard, and a
+Byzantine-tolerance curve read off 5 seeds is not the curve.
+
+It runs **outside this execution environment** — see the runner in
+`experiments/run_h6.sh`. The reason is environmental rather than scientific:
+this container executes only while a session is actively issuing calls, so
+background progress stops between turns. Measured directly — H6 completed 13
+cells during dense activity, then produced zero cells across two 20-minute idle
+windows, while a foreground calibration finished in 50 seconds.
+
+**If a trimmed budget ever becomes necessary**, it must first be shown to be
+interpretable, *before* the full sweep is run on it:
+
+> Run `f = 0` and `f = 0.5` at the proposed shorter budget. Their final returns
+> must separate visibly, with non-overlapping bootstrap CIs. Only then may the
+> trimmed budget be used.
+
+The reason is that H6's result is the *shape of a curve over `f`*. At a budget
+too short for the attack to bite, every cell returns roughly the same number and
+the curve comes out flat — and a flat curve is indistinguishable between "robust
+aggregation held" and "nothing had time to happen". The endpoints are the
+cheapest possible test of whether the budget can express the effect at all, and
+`experiments/h6_budget_check.py` runs exactly that check.
