@@ -141,6 +141,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="skip training; rebuild the report and figure from stored metrics",
     )
     p_sweepr.add_argument("--figure", type=str, default=None, help="figure output path")
+    p_sweepr.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="run cells in parallel processes; does not change any result, "
+        "since each cell is independently seeded and writes its own directory",
+    )
 
     p_grid = sub.add_parser(
         "calibration-grid",
@@ -279,7 +286,12 @@ def _cmd_sweep(args: argparse.Namespace) -> int:
                 return 7
             manifest = json.loads(manifest_path.read_text())
         else:
-            manifest = run_sweep(plan, resume=not args.no_resume, progress=False)
+            manifest = run_sweep(
+                plan,
+                resume=not args.no_resume,
+                progress=False,
+                workers=max(1, int(getattr(args, "workers", 1))),
+            )
     except SweepError as exc:
         logger.error("sweep rejected: %s", exc)
         return 6

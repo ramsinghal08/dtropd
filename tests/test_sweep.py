@@ -55,9 +55,31 @@ def smoke_plan(tmp_path: Path, seeds=(0, 1)) -> SweepPlan:
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize("name", ["sweep_smoke", "h7", "h5_locality"])
-def test_shipped_sweep_configs_load_and_pass_structural_checks(name):
-    plan = load_sweep_config(CONFIGS / f"{name}.yaml")
+def _sweep_config_paths() -> list[Path]:
+    """Every shipped sweep config, discovered rather than listed.
+
+    A hardcoded list means a new sweep config is unvalidated until someone
+    remembers to add it -- and the configs are exactly the artifacts where a
+    silent structural error costs a multi-hour run.
+    """
+    out = []
+    for path in sorted(CONFIGS.glob("*.yaml")):
+        raw = yaml.safe_load(path.read_text()) or {}
+        if isinstance(raw, dict) and "arms" in raw:
+            out.append(path)
+    return out
+
+
+def test_sweep_config_discovery_finds_the_known_ones():
+    """Guards the guard: if discovery silently matched nothing, every config
+    below would 'pass' by not being collected."""
+    found = {p.stem for p in _sweep_config_paths()}
+    assert {"sweep_smoke", "h7", "h5_locality", "h6_byzantine"} <= found, found
+
+
+@pytest.mark.parametrize("path", _sweep_config_paths(), ids=lambda p: p.stem)
+def test_shipped_sweep_configs_load_and_pass_structural_checks(path):
+    plan = load_sweep_config(path)
     assert plan.arms and plan.seeds
     check_reward_spec_versions(plan)
     check_paired_seeds(plan)
@@ -110,6 +132,117 @@ def test_environment_property_arms_may_span_versions():
     plan = load_sweep_config(CONFIGS / "h5_locality.yaml")
     result = check_reward_spec_versions(plan)
     assert result["passed"] and result["cross_version"]
+
+
+@pytest.mark.slow
+def test_parallel_workers_do_not_change_the_result(tmp_path):
+    """Parallelism must be a scheduling change and nothing more.
+
+    Every cell is seeded from its own (arm, seed) and writes its own directory,
+    so running them concurrently cannot alter a curve. This is worth pinning
+    because the alternative -- a sweep whose numbers depend on the worker count
+    -- would be undetectable by eye and would invalidate any comparison run at a
+    different parallelism.
+    """
+    sequential = run_sweep(smoke_plan(tmp_path / "seq", seeds=(0, 1)), progress=False)
+    parallel = run_sweep(
+        smoke_plan(tmp_path / "par", seeds=(0, 1)), progress=False, workers=2
+    )
+
+    def cells(manifest):
+        return {
+            (r["arm"], r["seed"]): r.get("final_return")
+            for r in manifest["runs"]
+        }
+
+    seq, par = cells(sequential), cells(parallel)
+    assert seq.keys() == par.keys()
+    for key, value in seq.items():
+        assert par[key] == pytest.approx(value, rel=1e-9), (
+            f"{key} differs between 1 and 2 workers: {value} vs {par[key]}"
+        )
+    assert [r["arm"] for r in sequential["runs"]] == [r["arm"] for r in parallel["runs"]], (
+        "the manifest must stay in plan order regardless of completion order"
+    )
+
+
+def _scale_points(name: str) -> list[int]:
+    plan = load_sweep_config(CONFIGS / f"{name}.yaml")
+    return sorted(a.config(plan.base).env.n_agents for a in plan.arms)
+
+
+def test_scale_sweep_caps_are_asymmetric_as_d15_requires():
+    """SPEC Sec. 13 / D15: H4 stops at 24, H5 keeps 48, and that is the point.
+
+    A single cap in either direction is the failure mode: capping both at 24
+    throws away the point that tests H5's flatness prediction hardest, and
+    running both to 48 spends roughly four times N=24 on a complete graph to add
+    one more point to a line H4 can already fit.
+    """
+    h4, h5 = _scale_points("h4_scale"), _scale_points("h5_scale")
+    assert h4 == [4, 8, 12, 24], h4
+    assert h5 == [4, 8, 12, 24, 48], h5
+    assert max(h5) > max(h4), (
+        "the caps have become symmetric; D15's asymmetry is deliberate and its "
+        "reason is the topology's edge count, not convenience"
+    )
+
+
+def test_scale_sweep_topologies_match_their_hypotheses():
+    """H4 needs dense coupling and H5 needs fixed degree; swapping them would
+    invert what each sweep measures while still running to completion."""
+    h4 = load_sweep_config(CONFIGS / "h4_scale.yaml")
+    h5 = load_sweep_config(CONFIGS / "h5_scale.yaml")
+    assert h4.base.graph.topology == "complete", "H4 specifies densely coupled"
+    assert h5.base.graph.topology == "fixed_degree", "H5 specifies fixed-degree"
+
+    # Fixed degree means the neighbourhood does not grow with N, or "per capita"
+    # would be measuring coupling rather than size.
+    degrees = {a.config(h5.base).graph.degree for a in h5.arms if a.config(h5.base).env.n_agents >= 8}
+    assert degrees == {4}, f"H5's degree varies with N: {degrees}"
+
+
+def test_h6_sweep_covers_the_full_fraction_axis_for_both_aggregators():
+    """H6's claim is a comparison of two curves over f, so both need the axis."""
+    plan = load_sweep_config(CONFIGS / "h6_byzantine.yaml")
+    by_condition: dict[str, set[float]] = {}
+    for arm in plan.arms:
+        cfg = arm.config(plan.base)
+        by_condition.setdefault(arm.condition, set()).add(cfg.stress.byzantine_fraction)
+
+    for condition in ("adaptive_trimmed_mean", "adaptive_sum"):
+        assert by_condition[condition] == {0.0, 0.1, 0.2, 0.3, 0.4, 0.5}, (
+            f"{condition} does not span the f axis SPEC H6 names"
+        )
+
+
+def test_h6_includes_the_adaptive_adversary_not_only_loud_ones():
+    """Without `adaptive`, H6 would be confirmed by an adversary that defeats
+    itself: trimming removes a sign-flip on magnitude alone."""
+    plan = load_sweep_config(CONFIGS / "h6_byzantine.yaml")
+    modes = {arm.config(plan.base).stress.byzantine_mode for arm in plan.arms}
+    assert "adaptive" in modes, modes
+    assert "sign_flip" in modes, "the loud positive control is missing"
+
+    scales = {
+        arm.config(plan.base).stress.byzantine_scale
+        for arm in plan.arms
+        if arm.config(plan.base).stress.byzantine_mode == "adaptive"
+    }
+    assert all(s <= 1.0 for s in scales), (
+        f"adaptive scale {scales} exceeds one honest sd, which leaves the honest "
+        "range and stops being an adaptive attack"
+    )
+
+
+def test_h6_does_not_tune_the_trim_fraction_to_the_byzantine_fraction():
+    """A trim fitted per-f assumes the defender knows f, which is exactly the
+    knowledge the defence is supposed not to need. It would also be a tuning
+    asymmetry: the robust arm tuned, the plain-sum arm not (SPEC Sec. 9 rule 5).
+    """
+    plan = load_sweep_config(CONFIGS / "h6_byzantine.yaml")
+    trims = {arm.config(plan.base).distill.trimmed_mean_fraction for arm in plan.arms}
+    assert len(trims) == 1, f"trimmed_mean_fraction varies across arms: {trims}"
 
 
 def _manifest(*runs: dict) -> dict:

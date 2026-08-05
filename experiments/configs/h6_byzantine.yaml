@@ -1,0 +1,128 @@
+# H6 -- Byzantine tolerance (SPEC Sec. 6, Phase 7).
+#
+#   "Measure: final return vs Byzantine fraction f in {0,.1,.2,.3,.4,.5},
+#    trimmed-mean vs plain-sum, including the adaptive adversary.
+#    Confirmed if robust aggregation degrades gracefully to f ~ 0.4 while
+#    plain-sum collapses early."
+#
+# THE ADAPTIVE ADVERSARY IS THE POINT. `sign_flip` is included as a positive
+# control -- a defence that cannot stop it is broken -- but it is not evidence
+# for the hypothesis. It places the Byzantine vectors ~25 honest standard
+# deviations outside the honest cloud, where coordinate-wise trimming removes
+# them on magnitude alone. Confirming "robust aggregation degrades gracefully"
+# against it would be confirming it against an adversary that defeats itself.
+#
+# `adaptive` (Baruch et al., "A Little Is Enough") perturbs each coordinate by
+# HALF an honest standard deviation in a consistent direction, so every
+# Byzantine vector sits inside the honest range while their contributions
+# accumulate rather than cancel. On synthetic gradients, trimming reduced the
+# loud attacks' error ~8x and the adaptive attack's error not at all.
+#
+# The reported quantity is the HONEST agents' return
+# (`episode_return_mean_honest`). Byzantine agents are sabotaging; averaging
+# them into the headline would measure the attack's self-harm alongside the
+# defence's success and would move with f even under a perfect defence.
+#
+# f = 0.5 on 12 agents is 6 Byzantine of 12 -- no honest majority, and no
+# aggregation rule can recover a signal that is not there. It is kept because
+# SPEC names it and because the COLLAPSE is the measurement at that end of the
+# axis; it is not evidence of a broken defence.
+#
+# Reward spec: v1 throughout (D3/D13) -- this is an algorithm comparison.
+name: h6_byzantine
+notes: >-
+  H6 Byzantine tolerance. f x {trimmed_mean, sum} x {sign_flip, adaptive},
+  10 seeds, paired. Reported on honest agents only. reward_spec_version v1.
+out_dir: runs/h6_byzantine
+seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+auto_calibrate: true
+
+base:
+  env:
+    n_agents: 12
+    n_targets: 3
+    capture_group_size: 3
+    capture_radius: 0.3
+    max_cycles: 50
+    heterogeneous: true
+    local_ratio: 0.5
+    reward_spec_version: v1
+  network:
+    hidden_sizes: [64, 64]
+  ppo:
+    lr: 1.0e-3
+    inner_epochs: 4
+    num_minibatches: 4
+    kl_early_stop: 0.02
+  distill:
+    enabled: true
+    beta_max: 0.05
+    warmup_fraction: 0.1
+    kappa: 100.0
+    delta_base: 0.1
+    gamma_attenuation: 1.0
+    attenuation: continuous
+    calibration: warmup
+    calibration_epochs: 8
+    calibration_pool_epochs: 2
+    radius_reference: fixed
+    # 0.2 trims one contribution from each end of a 11-neighbour complete
+    # graph. Deliberately NOT tuned per f: a trim fraction fitted to the
+    # Byzantine fraction assumes the defender knows f, which is the thing the
+    # defence is supposed to not need.
+    trimmed_mean_fraction: 0.2
+  instrument:
+    metrics_schema_version: v1
+    per_edge_gradients: true
+    per_edge_gradient_interval: 5
+    decay_probe: false        # H5's measurement, not H6's; costly at this scale
+  graph:
+    topology: complete
+  stress:
+    byzantine_scale: 0.5      # half an honest sd -- inside the range, per D14 note
+  train:
+    algo: dtropd
+    total_epochs: 150
+    num_envs: 40
+    device: cpu
+    eval_interval: 25
+    eval_episodes: 16
+
+arms:
+  # --- adaptive adversary x trimmed mean (the cell H6 is really about) ------
+  - {name: adaptive_trim_f00, algo: dtropd, condition: adaptive_trimmed_mean,
+     overrides: {distill.aggregation: trimmed_mean, stress.byzantine_mode: adaptive, stress.byzantine_fraction: 0.0}}
+  - {name: adaptive_trim_f10, algo: dtropd, condition: adaptive_trimmed_mean,
+     overrides: {distill.aggregation: trimmed_mean, stress.byzantine_mode: adaptive, stress.byzantine_fraction: 0.1}}
+  - {name: adaptive_trim_f20, algo: dtropd, condition: adaptive_trimmed_mean,
+     overrides: {distill.aggregation: trimmed_mean, stress.byzantine_mode: adaptive, stress.byzantine_fraction: 0.2}}
+  - {name: adaptive_trim_f30, algo: dtropd, condition: adaptive_trimmed_mean,
+     overrides: {distill.aggregation: trimmed_mean, stress.byzantine_mode: adaptive, stress.byzantine_fraction: 0.3}}
+  - {name: adaptive_trim_f40, algo: dtropd, condition: adaptive_trimmed_mean,
+     overrides: {distill.aggregation: trimmed_mean, stress.byzantine_mode: adaptive, stress.byzantine_fraction: 0.4}}
+  - {name: adaptive_trim_f50, algo: dtropd, condition: adaptive_trimmed_mean,
+     overrides: {distill.aggregation: trimmed_mean, stress.byzantine_mode: adaptive, stress.byzantine_fraction: 0.5}}
+
+  # --- adaptive adversary x plain sum (the predicted early collapse) --------
+  - {name: adaptive_sum_f00, algo: dtropd, condition: adaptive_sum,
+     overrides: {distill.aggregation: sum, stress.byzantine_mode: adaptive, stress.byzantine_fraction: 0.0}}
+  - {name: adaptive_sum_f10, algo: dtropd, condition: adaptive_sum,
+     overrides: {distill.aggregation: sum, stress.byzantine_mode: adaptive, stress.byzantine_fraction: 0.1}}
+  - {name: adaptive_sum_f20, algo: dtropd, condition: adaptive_sum,
+     overrides: {distill.aggregation: sum, stress.byzantine_mode: adaptive, stress.byzantine_fraction: 0.2}}
+  - {name: adaptive_sum_f30, algo: dtropd, condition: adaptive_sum,
+     overrides: {distill.aggregation: sum, stress.byzantine_mode: adaptive, stress.byzantine_fraction: 0.3}}
+  - {name: adaptive_sum_f40, algo: dtropd, condition: adaptive_sum,
+     overrides: {distill.aggregation: sum, stress.byzantine_mode: adaptive, stress.byzantine_fraction: 0.4}}
+  - {name: adaptive_sum_f50, algo: dtropd, condition: adaptive_sum,
+     overrides: {distill.aggregation: sum, stress.byzantine_mode: adaptive, stress.byzantine_fraction: 0.5}}
+
+  # --- sign_flip positive control: trimming must stop THIS one -------------
+  - {name: signflip_trim_f20, algo: dtropd, condition: signflip_trimmed_mean,
+     overrides: {distill.aggregation: trimmed_mean, stress.byzantine_mode: sign_flip, stress.byzantine_fraction: 0.2}}
+  - {name: signflip_trim_f40, algo: dtropd, condition: signflip_trimmed_mean,
+     overrides: {distill.aggregation: trimmed_mean, stress.byzantine_mode: sign_flip, stress.byzantine_fraction: 0.4}}
+  - {name: signflip_sum_f20, algo: dtropd, condition: signflip_sum,
+     overrides: {distill.aggregation: sum, stress.byzantine_mode: sign_flip, stress.byzantine_fraction: 0.2}}
+  - {name: signflip_sum_f40, algo: dtropd, condition: signflip_sum,
+     overrides: {distill.aggregation: sum, stress.byzantine_mode: sign_flip, stress.byzantine_fraction: 0.4}}

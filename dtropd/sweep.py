@@ -420,26 +420,56 @@ def _is_complete(run_dir: Path, fingerprint: str) -> bool:
     return recorded == fingerprint
 
 
+def _run_cell(job: tuple[Any, int, Any, str, Path, str]) -> dict[str, Any]:
+    """Train one (arm, seed) cell. Top-level so it is picklable by workers."""
+    from .train import train
+
+    arm_name, seed, cfg, fingerprint, run_dir, sweep_name = job
+    result = train(cfg, seed=seed, out_dir=run_dir, progress=False)
+    # SPEC Sec. 12 / D12: the fingerprint is an audit artifact, so it is
+    # written after the run it audits, not before.
+    meta_path = run_dir / "metadata.json"
+    meta = json.loads(meta_path.read_text())
+    meta["config_fingerprint"] = fingerprint
+    meta["sweep"] = {"name": sweep_name, "arm": arm_name}
+    meta_path.write_text(json.dumps(meta, indent=2, default=str))
+    return {"final_return": result.final_eval["return_mean"]}
+
+
 def run_sweep(
     plan: SweepPlan,
     *,
     resume: bool = True,
     progress: bool = False,
     require_calibration: bool | None = None,
+    workers: int = 1,
 ) -> dict[str, Any]:
-    """Run (or resume) every cell of the sweep and write a manifest."""
-    from .train import train
+    """Run (or resume) every cell of the sweep and write a manifest.
 
+    ``workers`` runs cells in parallel processes. This does **not** change any
+    result: every cell is seeded from its own ``(arm, seed)`` and writes to its
+    own directory, so cells never share state. What it changes is only which
+    cell is running when -- and the manifest is still assembled in plan order,
+    so the artifact is identical regardless of ``workers``.
+
+    Each worker sets its own torch thread count to 1 (via ``TrainConfig``), so
+    ``workers`` should stay at or below the core count; oversubscribing makes
+    every cell slower without finishing any sooner.
+    """
     plan.out_dir.mkdir(parents=True, exist_ok=True)
     calibration = ensure_calibrations(plan)
     checks = preflight(plan, require_calibration=require_calibration)
     checks["auto_calibration"] = calibration
+    checks["workers"] = workers
 
     manifest_path = plan.out_dir / "manifest.json"
     started = time.time()
     entries: list[dict[str, Any]] = []
     skipped = 0
 
+    # Decide skip-vs-run for every cell up front, so the parallel path and the
+    # sequential path make the same resume decisions from the same state.
+    planned: list[dict[str, Any]] = []
     for arm, seed in plan.runs:
         cfg = arm.config(plan.base)
         fingerprint = config_fingerprint(cfg)
@@ -454,22 +484,45 @@ def run_sweep(
             "config_fingerprint": fingerprint,
             "reward_spec_version": cfg.env.reward_spec_version,
         }
-        if resume and _is_complete(run_dir, fingerprint):
+        planned.append(
+            {"entry": entry, "cfg": cfg, "arm": arm, "seed": seed,
+             "run_dir": run_dir, "fingerprint": fingerprint,
+             "skip": bool(resume and _is_complete(run_dir, fingerprint))}
+        )
+
+    pending = [p for p in planned if not p["skip"]]
+    results: dict[int, dict[str, Any]] = {}
+    if workers > 1 and pending:
+        import multiprocessing as mp
+
+        jobs = [
+            (p["arm"].name, p["seed"], p["cfg"], p["fingerprint"], p["run_dir"], plan.name)
+            for p in pending
+        ]
+        logger.info("running %d cells on %d workers", len(jobs), workers)
+        ctx = mp.get_context("spawn")
+        with ctx.Pool(processes=workers) as pool:
+            for i, out in enumerate(pool.imap(_run_cell, jobs)):
+                results[id(pending[i])] = out
+                logger.info("done %s seed %d (%d/%d)",
+                            pending[i]["arm"].name, pending[i]["seed"], i + 1, len(jobs))
+
+    for p in planned:
+        entry = p["entry"]
+        if p["skip"]:
             entry["status"] = "skipped (already complete)"
             skipped += 1
-            logger.info("skip %s seed %d (already complete)", arm.name, seed)
-        else:
-            logger.info("run  %s seed %d", arm.name, seed)
-            result = train(cfg, seed=seed, out_dir=run_dir, progress=progress)
-            # SPEC Sec. 12 / D12: the fingerprint is an audit artifact, so it is
-            # written after the run it audits, not before.
-            meta_path = run_dir / "metadata.json"
-            meta = json.loads(meta_path.read_text())
-            meta["config_fingerprint"] = fingerprint
-            meta["sweep"] = {"name": plan.name, "arm": arm.name, "condition": arm.condition}
-            meta_path.write_text(json.dumps(meta, indent=2, default=str))
+            logger.info("skip %s seed %d (already complete)", p["arm"].name, p["seed"])
+        elif id(p) in results:
             entry["status"] = "completed"
-            entry["final_return"] = result.final_eval["return_mean"]
+            entry["final_return"] = results[id(p)]["final_return"]
+        else:
+            logger.info("run  %s seed %d", p["arm"].name, p["seed"])
+            out = _run_cell(
+                (p["arm"].name, p["seed"], p["cfg"], p["fingerprint"], p["run_dir"], plan.name)
+            )
+            entry["status"] = "completed"
+            entry["final_return"] = out["final_return"]
         entries.append(entry)
         # Written incrementally so a killed sweep still has an accurate manifest.
         manifest_path.write_text(
