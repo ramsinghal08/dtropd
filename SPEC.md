@@ -664,3 +664,59 @@ makes affordable.
 limit is reported** -- the largest `N` that completed, with its wall-clock --
 rather than the point being silently dropped. A scale sweep that quietly stops
 early reads as a completed sweep.
+
+---
+
+## 14. Phase 7 findings — 2026-08-05
+
+Measurements, not decisions. Recorded here because they bear on how H7 should
+be read, and because the first of them was found by running the scale sweep
+rather than by reasoning about the design.
+
+### F-1 — The calibrated trust gate goes inert as `N` grows
+
+Measured on the H4 scale sweep (complete graph, 5 seeds per point, `w` and
+`D_ij` at end of run; `delta_base` from the D6 artifact for that environment):
+
+| `N` | `delta_base` (measured at β=0) | operating `D_ij` p50 (β>0) | ratio | mean `w_ij` |
+|---|---|---|---|---|
+| 4 | 0.103 | 0.094 | 1.1x | 0.68 — active |
+| 8 | 0.090 | 0.036 | 2.5x | 0.89 |
+| 12 | 0.114 | 0.022 | 5.1x | 0.93 — **H7's scale** |
+| 24 | 0.082 | 0.011 | 7.5x | 0.95 — inert by the D1 threshold |
+
+**Mechanism, and it is not a bug.** D1 requires the calibration to be taken
+with the gate *inactive*, so the window holds `β = 0` exactly. But the gate then
+operates under `β > 0`, and distillation is itself a force pulling neighbours
+together — so the `D_ij` distribution the gate meets in practice is compressed
+relative to the one it was fitted to. More neighbours means more pull, so the
+compression grows with `N`. Both D1 and D6 are being followed exactly; the
+finding is that following them yields a progressively weaker gate at scale.
+
+**Why it matters for H7.** At `N = 12` the gate attenuates about 7%. D-TrOPD is
+then behaviourally close to NaiveDistill, which is the comparison H7's headline
+rests on. A null result at `N = 12` would therefore be ambiguous between "the
+trust gate does not help" and "the trust gate was barely switched on", and those
+are very different conclusions. The D7 sensitivity grid is the right instrument
+for this: it varies `delta_base`, and this measurement says the range that
+produces an active gate at `N = 12` sits well below what D6's procedure returns.
+
+**What is deliberately NOT changed.** D5 fixes adaptive `delta_base` as an
+ablation arm and never the default, and D6 fixes the calibration rule. Neither
+is touched here. Re-fitting the calibration after seeing that it produces a weak
+gate would be choosing a hyperparameter against an outcome, which is the thing
+the pre-registration exists to prevent. This is recorded as a measurement and
+left for an explicit decision.
+
+### F-2 — `N = 48` fixed-degree fits; the D15 asymmetry is vindicated
+
+| sweep | `N` | topology | edges | s/epoch | peak RSS |
+|---|---|---|---|---|---|
+| H4 | 24 | complete | 552 | 2.20 | 0.74 GB |
+| H5 | 24 | fixed-degree | 96 | 2.15 | 0.74 GB |
+| H5 | 48 | fixed-degree | 192 | 4.10 | 0.87 GB |
+
+D15's fallback — report the measured limit if `N = 48` does not fit — is not
+needed. The edge counts show why the cap is asymmetric rather than arbitrary:
+`N = 24` on a complete graph carries nearly three times the edges of `N = 48`
+fixed-degree.
