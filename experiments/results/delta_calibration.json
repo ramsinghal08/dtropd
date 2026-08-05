@@ -1,0 +1,26 @@
+{
+  "config": "/home/user/dtropd/experiments/configs/dtropd_heterogeneous.yaml",
+  "epochs": 8,
+  "edges_sampled": 1056,
+  "D_ij_percentiles": {
+    "p5": 0.00011873466974066105,
+    "p25": 0.011728023178875446,
+    "p50": 0.026208506897091866,
+    "p75": 0.03607606329023838,
+    "p95": 0.053029485046863556,
+    "p99": 0.06804120466113091
+  },
+  "D_ij_mean": 0.025447106458531463,
+  "delta_i_mean_observed": 0.06913689515431554,
+  "current": {
+    "delta_base": 0.1,
+    "gamma_attenuation": 1.0,
+    "w_at_median_D": 0.9873435497283936,
+    "attenuation_is_effectively_off": true
+  },
+  "suggested": {
+    "delta_base": 0.026208506897091866,
+    "gamma_attenuation": 26.137952093322856,
+    "rationale": "delta_base = q0.5 of observed D_ij so the radius sits inside the data; gamma chosen so an edge at the 95th percentile (D = 0.0530) is attenuated to w = 0.5."
+  }
+}

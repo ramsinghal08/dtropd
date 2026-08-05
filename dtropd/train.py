@@ -127,6 +127,9 @@ def train(
     for epoch in range(cfg.train.total_epochs):
         algo.epoch = epoch
         t0 = time.time()
+        # SPEC Sec. 2.1 step 1: snapshots are broadcast and frozen before any
+        # data is collected. No-op for algorithms that exchange nothing.
+        algo.on_epoch_start()
         rollout_stats = algo.collect_rollout(vec_env)
         t1 = time.time()
         update_stats = algo.update()
