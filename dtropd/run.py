@@ -93,6 +93,9 @@ def build_parser() -> argparse.ArgumentParser:
         "smoke", help="2-agent CPU smoke run (SPEC Sec. 9 rule 6: always works)"
     )
     p_smoke.add_argument("--steps", type=int, default=200, help="minimum env steps to run")
+    p_smoke.add_argument(
+        "--algo", type=str, default="ippo", help="algorithm to smoke-test"
+    )
     return parser
 
 
@@ -190,7 +193,8 @@ def _cmd_smoke(args: argparse.Namespace) -> int:
     cfg.env.n_targets = 1
     cfg.env.capture_group_size = 2
     cfg.env.max_cycles = 25
-    cfg.train.algo = "ippo"
+    cfg.train.algo = args.algo
+    cfg.distill.enabled = args.algo == "dtropd"
     cfg.train.num_envs = 4
     cfg.train.total_epochs = max(1, args.steps // (25 * 4))
     cfg.train.eval_interval = 0

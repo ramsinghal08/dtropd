@@ -1,0 +1,72 @@
+{
+  "acceptance": "Phase 3 -- D-TrOPD core",
+  "criteria": {
+    "A1_beta_zero_reproduces_ippo_bitwise": {
+      "per_seed": [
+        {
+          "seed": 0,
+          "epochs": 15,
+          "n_tensors": 78,
+          "mismatched_tensors": [],
+          "max_abs_param_diff": 0.0,
+          "curve_mismatch_keys": [],
+          "social_path_ran": true,
+          "final_beta": 0.0,
+          "final_delta_mean": 0.07554201923318161,
+          "final_social_divergence_mean": 0.320455938577652,
+          "final_trust_weight_mean": 0.8476270437240601,
+          "snapshot_bytes_total": 3693600,
+          "passed": true
+        },
+        {
+          "seed": 1,
+          "epochs": 15,
+          "n_tensors": 78,
+          "mismatched_tensors": [],
+          "max_abs_param_diff": 0.0,
+          "curve_mismatch_keys": [],
+          "social_path_ran": true,
+          "final_beta": 0.0,
+          "final_delta_mean": 0.08677803278054504,
+          "final_social_divergence_mean": 0.1901981383562088,
+          "final_trust_weight_mean": 0.9093334078788757,
+          "snapshot_bytes_total": 3693600,
+          "passed": true
+        },
+        {
+          "seed": 2,
+          "epochs": 15,
+          "n_tensors": 78,
+          "mismatched_tensors": [],
+          "max_abs_param_diff": 0.0,
+          "curve_mismatch_keys": [],
+          "social_path_ran": true,
+          "final_beta": 0.0,
+          "final_delta_mean": 0.08027091337384723,
+          "final_social_divergence_mean": 0.24740077555179596,
+          "final_trust_weight_mean": 0.8818697333335876,
+          "snapshot_bytes_total": 3693600,
+          "passed": true
+        }
+      ],
+      "passed": true
+    },
+    "A2_invariants_I1_to_I9": {
+      "target": "tests/test_invariants.py",
+      "returncode": 0,
+      "summary": [
+        "............................                                             [100%]"
+      ],
+      "passed": true
+    },
+    "A3_attenuation_w0_and_c1": {
+      "target": "tests/test_attenuation.py",
+      "returncode": 0,
+      "summary": [
+        "-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html"
+      ],
+      "passed": true
+    }
+  },
+  "passed": true
+}
