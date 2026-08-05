@@ -88,9 +88,6 @@ def test_unimplemented_algorithms_fail_loudly():
     from dtropd.algorithms import build_algorithm
 
     cfg = Config()
-    cfg.train.algo = "dtropd"
-    with pytest.raises(NotImplementedError, match="Phase 3"):
-        build_algorithm(cfg, seed=0)
     cfg.train.algo = "mappo"
     with pytest.raises(NotImplementedError, match="Phase 4"):
         build_algorithm(cfg, seed=0)
