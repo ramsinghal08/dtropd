@@ -506,6 +506,28 @@ def run_sweep(
                 results[id(pending[i])] = out
                 logger.info("done %s seed %d (%d/%d)",
                             pending[i]["arm"].name, pending[i]["seed"], i + 1, len(jobs))
+                # Progress marker written as results arrive. Without it a
+                # parallel sweep produces no manifest at all until the very last
+                # cell finishes, so a five-hour run killed at hour four looks
+                # like a run that never started. Resume reads run directories
+                # rather than this file, so it stays correct either way -- what
+                # this restores is visibility, not correctness.
+                manifest_path.write_text(
+                    json.dumps(
+                        {
+                            "sweep": plan.name,
+                            "notes": plan.notes,
+                            "seeds": plan.seeds,
+                            "checks": checks,
+                            "runs": [],
+                            "in_progress": True,
+                            "cells_finished": i + 1,
+                            "cells_total": len(jobs),
+                        },
+                        indent=2,
+                        default=str,
+                    )
+                )
 
     for p in planned:
         entry = p["entry"]

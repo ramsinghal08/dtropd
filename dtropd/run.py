@@ -300,14 +300,30 @@ def _cmd_sweep(args: argparse.Namespace) -> int:
     (plan.out_dir / "report.json").write_text(json.dumps(report, indent=2, default=str))
 
     figure = Path(args.figure) if args.figure else plan.out_dir / "figures" / "comparison.png"
-    try:
-        plot_comparison(report, figure, title=f"{plan.name}: final return")
-        logger.info("wrote %s", figure)
-    except Exception as exc:  # pragma: no cover - matplotlib is optional
-        logger.error("could not render the figure: %s", exc)
-        return 8
+    if not report.get("per_arm"):
+        # An environment-property sweep (H4/H5 scale, the D11(c) probe) has no
+        # algorithm arms, so the comparison figure has nothing to draw and its
+        # absence is not a failure. Erroring here made a legitimate sweep type
+        # unable to exit cleanly -- and, chained with &&, silently prevented the
+        # next sweep from starting at all.
+        logger.info(
+            "no algorithm arms in this sweep, so no comparison figure: %s",
+            "every arm is purpose: environment_property",
+        )
+        figure = None
+    else:
+        try:
+            plot_comparison(report, figure, title=f"{plan.name}: final return")
+            logger.info("wrote %s", figure)
+        except Exception as exc:  # pragma: no cover - matplotlib is optional
+            logger.error("could not render the figure: %s", exc)
+            return 8
 
-    print(json.dumps({"manifest": str(manifest_path), "report": str(plan.out_dir / "report.json"), "figure": str(figure)}, indent=2))
+    print(json.dumps({
+        "manifest": str(manifest_path),
+        "report": str(plan.out_dir / "report.json"),
+        "figure": str(figure) if figure else None,
+    }, indent=2))
     return 0
 
 

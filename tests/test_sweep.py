@@ -303,6 +303,36 @@ def test_report_allows_environment_property_arms_to_span_versions(tmp_path):
     assert "CROSS-VERSION" in block["label"]
 
 
+def test_environment_property_only_sweep_has_nothing_to_plot(tmp_path):
+    """H4/H5 scale sweeps have no algorithm arms, so no comparison figure.
+
+    This is not a degenerate case to guard against -- it is what an
+    environment-property sweep *is*. It earned a test because treating the
+    missing figure as a hard error made a legitimate sweep type unable to exit
+    cleanly, and chained with `&&` that silently stopped the next sweep from
+    starting at all.
+    """
+    runs = []
+    for arm in ("n04", "n08"):
+        entry = _run_entry(arm, "dtropd", "v1", purpose="environment_property")
+        run_dir = tmp_path / arm
+        run_dir.mkdir()
+        (run_dir / "metrics.jsonl").write_text("")
+        entry["run_dir"] = str(run_dir)
+        runs.append(entry)
+
+    report = sweep_report(_manifest(*runs))
+    assert not report.get("per_arm"), (
+        "an environment-property sweep produced algorithm-comparison blocks"
+    )
+
+    pytest.importorskip("matplotlib")
+    from dtropd.plot import plot_comparison
+
+    with pytest.raises(ValueError, match="no per_arm"):
+        plot_comparison(report, tmp_path / "nope.png")
+
+
 def test_cross_version_figures_carry_the_label(tmp_path):
     """D13: labelled cross-version *wherever it appears*, figures included.
 
