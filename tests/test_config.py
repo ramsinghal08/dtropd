@@ -129,11 +129,35 @@ def test_homogeneous_copy_disables_zones():
 
 
 def test_shipped_experiment_configs_validate():
+    """Every shipped YAML validates under the schema it belongs to.
+
+    Two schemas live in this directory: single-run configs (a `Config`) and
+    Phase 6 sweep configs (a base config plus arms). They are routed by the
+    presence of an `arms` key rather than by filename, so a new file cannot
+    dodge validation by being named unexpectedly.
+    """
     from pathlib import Path
+
+    import yaml as _yaml
+
+    from dtropd.sweep import check_paired_seeds, check_reward_spec_versions, load_sweep_config
 
     root = Path(__file__).resolve().parent.parent / "experiments" / "configs"
     files = sorted(root.glob("*.yaml"))
     assert files, "no experiment configs shipped"
+
+    runs, sweeps = 0, 0
     for path in files:
-        cfg = Config.from_yaml(path)
-        cfg.validate(emit=False)
+        raw = _yaml.safe_load(path.read_text()) or {}
+        if "arms" in raw:
+            plan = load_sweep_config(path)
+            plan.base.validate(emit=False)
+            for arm in plan.arms:
+                arm.config(plan.base)  # validates each arm's resolved config
+            check_reward_spec_versions(plan)
+            check_paired_seeds(plan)
+            sweeps += 1
+        else:
+            Config.from_yaml(path).validate(emit=False)
+            runs += 1
+    assert runs and sweeps, f"expected both schemas, got {runs} runs / {sweeps} sweeps"

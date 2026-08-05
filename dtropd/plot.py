@@ -18,7 +18,12 @@ import numpy as np
 
 from .utils import read_metrics
 
-__all__ = ["load_runs", "learning_curves", "plot_learning_curves"]
+__all__ = [
+    "load_runs",
+    "learning_curves",
+    "plot_learning_curves",
+    "plot_comparison",
+]
 
 
 def load_runs(run_dirs: Iterable[str | Path]) -> dict[str, list[dict[str, Any]]]:
@@ -80,6 +85,109 @@ def plot_learning_curves(
     ax.set_title(title or f"{key} ({y.shape[0]} seeds)")
     ax.legend()
     ax.grid(alpha=0.3)
+    fig.tight_layout()
+    out = Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=150)
+    plt.close(fig)
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# The main comparison figure (SPEC Sec. 5 Phase 6, Sec. 7)
+# --------------------------------------------------------------------------- #
+
+
+def plot_comparison(
+    report: dict[str, Any],
+    out_path: str | Path,
+    title: str | None = None,
+) -> Path:
+    """IQM with 95% bootstrap CIs per arm, plus the D8 interaction panel.
+
+    ``report`` is the output of :func:`dtropd.sweep.sweep_report`, which is
+    computed entirely from stored metrics -- so this figure is regenerable by
+    one command with no manual steps (SPEC Sec. 7).
+
+    rliable's headline estimator is the interquartile mean with stratified
+    bootstrap CIs; those are computed in ``dtropd.analysis`` (``iqm``,
+    ``bootstrap_ci``) so the figure has no dependency the core package lacks.
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    per_arm = report.get("per_arm", {})
+    if not per_arm:
+        raise ValueError("report has no per_arm block: nothing to plot")
+
+    conditions = sorted(per_arm)
+    interaction = report.get("h7_interaction")
+    ncols = 2 if interaction else 1
+    fig, axes = plt.subplots(
+        1, ncols, figsize=(6 * ncols, 4.2), squeeze=False
+    )
+
+    ax = axes[0][0]
+    algos = sorted({a for c in conditions for a in per_arm[c]})
+    width = 0.8 / max(1, len(conditions))
+    for ci, condition in enumerate(conditions):
+        xs, ys, lo, hi = [], [], [], []
+        for ai, algo in enumerate(algos):
+            block = per_arm[condition].get(algo)
+            if not block:
+                continue
+            xs.append(ai + ci * width - 0.4 + width / 2)
+            ys.append(block["iqm"])
+            lo.append(block["iqm"] - block["ci"]["lo"])
+            hi.append(block["ci"]["hi"] - block["iqm"])
+        if not xs:
+            continue
+        n = per_arm[condition][algos[0]]["n_seeds"] if algos[0] in per_arm[condition] else 0
+        ax.errorbar(
+            xs, ys, yerr=[lo, hi], fmt="o", capsize=4, label=f"{condition} (n={n})"
+        )
+    ax.set_xticks(range(len(algos)))
+    ax.set_xticklabels(algos, rotation=15)
+    ax.set_ylabel("final return -- IQM, 95% bootstrap CI")
+    ax.set_title(title or "Algorithm comparison")
+    ax.grid(alpha=0.3, axis="y")
+    ax.legend(fontsize=8)
+
+    if interaction:
+        ax2 = axes[0][1]
+        labels, values, errs = [], [], []
+        for key, label in (
+            ("heterogeneous_difference", "heterogeneous"),
+            ("homogeneous_difference", "homogeneous (control)"),
+        ):
+            block = interaction.get(key, {})
+            if not np.isfinite(block.get("mean", float("nan"))):
+                continue
+            labels.append(label)
+            values.append(block["mean"])
+            ci = block.get("ci") or {}
+            errs.append(
+                [block["mean"] - ci.get("lo", block["mean"]),
+                 ci.get("hi", block["mean"]) - block["mean"]]
+            )
+        if labels:
+            err = np.asarray(errs).T if errs else None
+            ax2.bar(labels, values, color=["tab:blue", "tab:orange"][: len(labels)])
+            if err is not None:
+                ax2.errorbar(labels, values, yerr=err, fmt="none", ecolor="k", capsize=5)
+        ax2.axhline(0.0, color="k", lw=1)
+        flip = interaction.get("predicted_sign_flip_observed")
+        ax2.set_ylabel(
+            f"{interaction['treatment']} - {interaction['control']} (final return)"
+        )
+        ax2.set_title(
+            "H7 interaction: predicted sign flip "
+            + ("OBSERVED" if flip else "not observed")
+        )
+        ax2.grid(alpha=0.3, axis="y")
+
     fig.tight_layout()
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)

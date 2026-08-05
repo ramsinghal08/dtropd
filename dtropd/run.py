@@ -99,7 +99,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="measure the D_ij distribution and emit a calibrated config (SPEC D1)",
     )
     add_common(p_cal)
-    p_cal.add_argument("--out", type=str, default=None, help="write the calibrated YAML here")
+    p_cal.add_argument(
+        "--out", type=str, default=None, help="write the calibration ARTIFACT (json) here"
+    )
     p_cal.add_argument("--epochs", type=int, default=10, help="calibration window length")
     p_cal.add_argument("--seed", type=int, default=None)
 
@@ -121,6 +123,33 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_analyze.add_argument("--run", required=True)
     p_analyze.add_argument("--out", default=None)
+
+    p_sweepr = sub.add_parser(
+        "sweep", help="run a multi-seed sweep and emit the comparison figure (Phase 6)"
+    )
+    p_sweepr.add_argument("--config", required=True, help="a sweep YAML")
+    p_sweepr.add_argument(
+        "--seeds", type=str, default=None, help="count (e.g. 10) or list (0,1,2)"
+    )
+    p_sweepr.add_argument("--out", type=str, default=None, help="sweep output directory")
+    p_sweepr.add_argument(
+        "--no-resume", action="store_true", help="re-run cells that already completed"
+    )
+    p_sweepr.add_argument(
+        "--report-only",
+        action="store_true",
+        help="skip training; rebuild the report and figure from stored metrics",
+    )
+    p_sweepr.add_argument("--figure", type=str, default=None, help="figure output path")
+
+    p_grid = sub.add_parser(
+        "calibration-grid",
+        help="derive H7's delta_base sensitivity grid (SPEC D7-AMENDED)",
+    )
+    add_common(p_grid)
+    p_grid.add_argument("--windows", type=int, nargs="+", default=None)
+    p_grid.add_argument("--out", type=str, default="experiments/calibrations")
+    p_grid.add_argument("--seed", type=int, default=None)
 
     p_smoke = sub.add_parser(
         "smoke", help="2-agent CPU smoke run (SPEC Sec. 9 rule 6: always works)"
@@ -171,6 +200,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_calibrate(args)
         if args.command == "sweep-check":
             return _cmd_sweep_check(args)
+        if args.command == "sweep":
+            return _cmd_sweep(args)
+        if args.command == "calibration-grid":
+            return _cmd_calibration_grid(args)
         if args.command == "analyze":
             return _cmd_analyze(args)
         if args.command == "smoke":
@@ -223,52 +256,131 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_calibrate(args: argparse.Namespace) -> int:
-    """SPEC Sec. 10 / D1: the calibration procedure as a single command.
+def _cmd_sweep(args: argparse.Namespace) -> int:
+    """SPEC Sec. 5 Phase 6: one command, from scratch, to the comparison figure."""
+    from .plot import plot_comparison
+    from .sweep import SweepError, build_plan, run_sweep, sweep_report
 
-    Runs the real training loop with ``distill.calibration: warmup`` and the
-    window set to ``--epochs``, so the offline command and the in-run path
-    execute *the same code*: they cannot drift apart. beta is held at exactly 0
-    for the whole window, so the measurement is taken with the gate inactive.
-    """
+    seeds: Any = args.seeds
+    if seeds is not None:
+        seeds = [int(s) for s in seeds.split(",")] if "," in seeds else int(seeds)
+
+    try:
+        plan = build_plan(args.config, seeds=seeds, out_dir=args.out)
+    except SweepError as exc:
+        logger.error("sweep config rejected: %s", exc)
+        return 6
+
+    manifest_path = plan.out_dir / "manifest.json"
+    try:
+        if args.report_only:
+            if not manifest_path.exists():
+                logger.error("no manifest at %s; run the sweep first", manifest_path)
+                return 7
+            manifest = json.loads(manifest_path.read_text())
+        else:
+            manifest = run_sweep(plan, resume=not args.no_resume, progress=False)
+    except SweepError as exc:
+        logger.error("sweep rejected: %s", exc)
+        return 6
+
+    report = sweep_report(manifest)
+    (plan.out_dir / "report.json").write_text(json.dumps(report, indent=2, default=str))
+
+    figure = Path(args.figure) if args.figure else plan.out_dir / "figures" / "comparison.png"
+    try:
+        plot_comparison(report, figure, title=f"{plan.name}: final return")
+        logger.info("wrote %s", figure)
+    except Exception as exc:  # pragma: no cover - matplotlib is optional
+        logger.error("could not render the figure: %s", exc)
+        return 8
+
+    print(json.dumps({"manifest": str(manifest_path), "report": str(plan.out_dir / "report.json"), "figure": str(figure)}, indent=2))
+    return 0
+
+
+def _cmd_calibration_grid(args: argparse.Namespace) -> int:
+    """SPEC Sec. 12 / D7-AMENDED: derive the grid, check the spread, pin artifacts."""
+    from .calibration import D7_WINDOW_LENGTHS, d7_grid_from_records
+
+    cfg = _load(args)
+    windows = args.windows or list(D7_WINDOW_LENGTHS)
+    seed = args.seed if args.seed is not None else cfg.train.seed
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    records = {}
+    for window in windows:
+        logger.info("calibrating with a %d-epoch window", window)
+        record = _measure_calibration(cfg, window=window, seed=seed, source=args.config)
+        path = out_dir / f"{Path(args.config).stem}_w{window}.json"
+        record.save(path)
+        records[window] = record
+        logger.info("  delta_base %.6g  gamma %.6g  -> %s", record.delta_base, record.gamma_attenuation, path)
+
+    grid = d7_grid_from_records(records)
+    grid["artifacts"] = {
+        str(w): str(out_dir / f"{Path(args.config).stem}_w{w}.json") for w in windows
+    }
+    (out_dir / f"{Path(args.config).stem}_d7_grid.json").write_text(
+        json.dumps(grid, indent=2, default=str)
+    )
+    print(json.dumps(grid, indent=2, default=str))
+    if grid["widened"]:
+        logger.warning("%s", grid["widening_reason"])
+    return 0
+
+
+def _measure_calibration(cfg: Config, window: int, seed: int, source: str | None):
+    """Run the D6 procedure once at a given window length."""
     import copy as _copy
 
-    import yaml
-
-    from .algorithms import build_algorithm, trust_weight
+    from .algorithms import build_algorithm
     from .env import SyncVectorEnv
     from .utils import derive_seed
 
-    cfg = _load(args)
-    seed = args.seed if args.seed is not None else cfg.train.seed
-    cfg.train.algo = "dtropd"
-    cfg.distill.enabled = True
-    cfg.distill.calibration = "warmup"
-    cfg.distill.warmup_epochs = args.epochs
-    cfg.train.total_epochs = max(cfg.train.total_epochs, args.epochs)
-    cfg.validate(emit=False)
+    run_cfg = _copy.deepcopy(cfg)
+    run_cfg.train.algo = "dtropd"
+    run_cfg.distill.enabled = True
+    run_cfg.distill.calibration = "warmup"
+    run_cfg.distill.calibration_file = None
+    run_cfg.distill.calibration_epochs = window
+    run_cfg.train.total_epochs = max(run_cfg.train.total_epochs, window)
+    run_cfg.validate(emit=False)
 
-    algo = build_algorithm(cfg, seed=seed, device=cfg.train.device)
-    vec = SyncVectorEnv(cfg.env, cfg.train.num_envs, seed=derive_seed(seed, "env"))
-    for epoch in range(args.epochs):
+    algo = build_algorithm(run_cfg, seed=seed, device=run_cfg.train.device)
+    vec = SyncVectorEnv(run_cfg.env, run_cfg.train.num_envs, seed=derive_seed(seed, "env"))
+    for epoch in range(window):
         algo.epoch = epoch
         algo.on_epoch_start()
         algo.collect_rollout(vec)
         algo.update()
-        logger.info("calibration epoch %d/%d", epoch + 1, args.epochs)
+    if algo.calibration_record is None:
+        raise RuntimeError(f"calibration produced no samples at window {window}")
+    algo.calibration_record.source_config = source
+    return algo.calibration_record
 
-    if not algo._calibrated:
-        logger.error("calibration produced no samples (is the graph empty?)")
-        return 4
 
-    samples = algo._calibration_samples
-    percentiles = {
-        f"p{int(q * 100)}": float(np.quantile(samples, q))
-        for q in (0.05, 0.25, 0.5, 0.75, 0.95, 0.99)
-    }
+def _cmd_calibrate(args: argparse.Namespace) -> int:
+    """SPEC Sec. 11 / D6: the calibration procedure as a single command.
+
+    Emits the **artifact** (a CalibrationRecord JSON), which is what every arm
+    of a comparison pins via ``distill.calibration_file``. Runs the real
+    training loop with ``distill.calibration: warmup``, so the offline command
+    and the in-run path execute the same code and cannot drift apart; beta is
+    held at exactly 0 for the whole window, so the measurement is taken with the
+    gate inactive.
+    """
+    from .algorithms import trust_weight
+
+    cfg = _load(args)
+    seed = args.seed if args.seed is not None else cfg.train.seed
+    window = args.epochs
+    record = _measure_calibration(cfg, window=window, seed=seed, source=args.config)
+
     before = float(
         trust_weight(
-            torch.tensor(percentiles["p50"]),
+            torch.tensor(record.quantiles["p50"]),
             cfg.distill.delta_base,
             cfg.distill.gamma_attenuation,
             cfg.distill.attenuation,
@@ -276,34 +388,21 @@ def _cmd_calibrate(args: argparse.Namespace) -> int:
     )
     after = float(
         trust_weight(
-            torch.tensor(percentiles["p50"]),
-            algo.delta_base,
-            algo.gamma_attenuation,
+            torch.tensor(record.quantiles["p50"]),
+            record.delta_base,
+            record.gamma_attenuation,
             cfg.distill.attenuation,
         )
     )
-
-    out_cfg = _copy.deepcopy(cfg)
-    out_cfg.distill.delta_base = algo.delta_base
-    out_cfg.distill.gamma_attenuation = algo.gamma_attenuation
-    out_cfg.distill.calibration = "none"  # the values are baked in
-    out_cfg.distill.warmup_epochs = None
-    out_cfg.train.total_epochs = Config().train.total_epochs
-    out_cfg.notes = (
-        f"{cfg.notes} | calibrated per SPEC Sec. 10 / D1 from {len(samples)} observed "
-        f"edges over {args.epochs} epochs (seed {seed}): median D_ij "
-        f"{percentiles['p50']:.5g}, p95 {percentiles['p95']:.5g}; "
-        f"delta_base {cfg.distill.delta_base:.5g} -> {algo.delta_base:.5g}, "
-        f"gamma {cfg.distill.gamma_attenuation:.5g} -> {algo.gamma_attenuation:.5g}"
-    ).strip(" |")
-
     report = {
-        "procedure": "SPEC Sec. 10 / D1",
+        "procedure": "SPEC Sec. 11 / D6",
         "source_config": args.config,
         "seed": seed,
-        "epochs": args.epochs,
-        "edges_sampled": len(samples),
-        "D_ij_percentiles": percentiles,
+        "window_epochs": record.window_epochs,
+        "pooled_epochs": record.pooled_epochs,
+        "edges_sampled": record.edge_count,
+        "D_ij_quantiles": record.quantiles,
+        "calibration_id": record.calibration_id,
         "before": {
             "delta_base": cfg.distill.delta_base,
             "gamma_attenuation": cfg.distill.gamma_attenuation,
@@ -311,17 +410,17 @@ def _cmd_calibrate(args: argparse.Namespace) -> int:
             "gate_inert": bool(before > 0.95),
         },
         "after": {
-            "delta_base": algo.delta_base,
-            "gamma_attenuation": algo.gamma_attenuation,
+            "delta_base": record.delta_base,
+            "gamma_attenuation": record.gamma_attenuation,
             "w_at_median_D": after,
             "gate_inert": bool(after > 0.95),
         },
     }
-    print(json.dumps(report, indent=2))
     if args.out:
-        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-        Path(args.out).write_text(yaml.safe_dump(out_cfg.to_dict(), sort_keys=False))
-        logger.info("wrote calibrated config to %s", args.out)
+        record.save(args.out)
+        report["artifact"] = str(args.out)
+        logger.info("wrote calibration artifact to %s", args.out)
+    print(json.dumps(report, indent=2, default=str))
     if report["before"]["gate_inert"]:
         logger.warning(
             "the source config's gate was inert (w=%.4f at the median D_ij): "
@@ -329,62 +428,6 @@ def _cmd_calibrate(args: argparse.Namespace) -> int:
             before,
         )
     return 0
-
-
-def _cmd_sweep_check(args: argparse.Namespace) -> int:
-    """SPEC Sec. 11 / D6: every arm of a comparison must share one calibration.
-
-    Arms with no radius of their own (NaiveDistill, per D4) still declare the
-    artifact their comparison used -- declaring is what makes the check able to
-    tell "the same calibration" from "two calibrations that happen to be close".
-    """
-    from .calibration import CalibrationError, CalibrationRecord, assert_shared_calibration
-
-    rows: list[tuple[str, Any]] = []
-    for path in args.configs:
-        cfg = Config.from_yaml(path)
-        cfg.validate(emit=False)
-        record = None
-        if cfg.distill.calibration_file:
-            record = CalibrationRecord.load(cfg.distill.calibration_file)
-        rows.append((f"{cfg.train.algo}:{Path(path).name}", record))
-
-    try:
-        shared = assert_shared_calibration(
-            rows, require_calibration=not args.allow_uncalibrated
-        )
-    except CalibrationError as exc:
-        logger.error("sweep rejected: %s", exc)
-        return 5
-
-    print(
-        json.dumps(
-            {
-                "arms": [
-                    {
-                        "arm": name,
-                        "calibration_id": rec.calibration_id if rec else None,
-                        "delta_base": rec.delta_base if rec else None,
-                    }
-                    for name, rec in rows
-                ],
-                "shared_calibration_id": shared,
-                "ok": True,
-            },
-            indent=2,
-        )
-    )
-    return 0
-
-
-def _cmd_analyze(args: argparse.Namespace) -> int:
-    import subprocess
-
-    script = Path(__file__).resolve().parent.parent / "experiments" / "analyze_hypotheses.py"
-    cmd = [sys.executable, str(script), "--run", args.run, "--quiet"]
-    if args.out:
-        cmd += ["--out", args.out]
-    return subprocess.call(cmd)
 
 
 def _cmd_smoke(args: argparse.Namespace) -> int:

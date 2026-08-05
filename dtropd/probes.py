@@ -133,13 +133,82 @@ def decay_probe(
     for hop in sorted({p["hops"] for p in pairs}):
         values = [p["delta_return"] for p in pairs if p["hops"] == hop]
         by_hop[str(hop)] = quantiles(values, quantile_list, "")
+
+    fit = fit_decay(by_hop, seed=seed)
     return DecayProbeResult(
         {
             "perturbed_agents": targets,
             "episodes": episodes,
             "scale": scale,
             "q_proxy": "abs change in the observer's mean episode return, paired env seeds",
+            "graph_diameter": int(max((p["hops"] for p in pairs), default=0)),
             "by_hop": by_hop,
+            "fit": fit,
             "pairs": pairs,
         }
     )
+
+
+#: SPEC Sec. 12 / D11(a): a decay slope from fewer than this many hop levels is
+#: not interpretable and must be reported as such.
+MIN_HOP_LEVELS_FOR_A_FIT = 4
+
+
+def fit_decay(
+    by_hop: dict[str, Any], seed: int = 0, n_boot: int = 2000
+) -> dict[str, Any]:
+    """Fit ``log(mean |dQ^i|)`` against hop distance, with a bootstrap CI.
+
+    H5 predicts sensitivity decays *exponentially* with hop distance, i.e. a
+    negative slope in log space. SPEC Sec. 12 / D11(a): a slope from fewer than
+    :data:`MIN_HOP_LEVELS_FOR_A_FIT` hop levels is **uninterpretable**, and this
+    function says so rather than returning a number that looks like evidence.
+    """
+    hops = sorted(int(h) for h in by_hop if int(h) > 0)
+    means = [by_hop[str(h)].get("mean", float("nan")) for h in hops]
+    usable = [(h, m) for h, m in zip(hops, means) if np.isfinite(m) and m > 0.0]
+    n_levels = len(usable)
+
+    out: dict[str, Any] = {
+        "hop_levels_used": n_levels,
+        "hops": [h for h, _ in usable],
+        "mean_abs_delta_return": [m for _, m in usable],
+        "min_hop_levels_required": MIN_HOP_LEVELS_FOR_A_FIT,
+        "interpretable": n_levels >= MIN_HOP_LEVELS_FOR_A_FIT,
+        "log_slope": float("nan"),
+        "log_slope_ci": {},
+    }
+    if n_levels < 2:
+        out["note"] = (
+            f"only {n_levels} usable hop level(s): no slope can be fitted at all. "
+            "Use a ring or path topology with a larger diameter (D11(a))."
+        )
+        return out
+
+    x = np.asarray([h for h, _ in usable], dtype=np.float64)
+    y = np.log(np.asarray([m for _, m in usable], dtype=np.float64))
+    out["log_slope"] = float(np.polyfit(x, y, 1)[0])
+
+    # Bootstrap over hop levels; with few levels the CI is deliberately wide,
+    # which is the honest representation of a low-powered probe.
+    rng = np.random.default_rng(seed)
+    slopes = []
+    for _ in range(n_boot):
+        idx = rng.integers(0, n_levels, size=n_levels)
+        if len(set(x[idx].tolist())) < 2:
+            continue
+        slopes.append(float(np.polyfit(x[idx], y[idx], 1)[0]))
+    if slopes:
+        out["log_slope_ci"] = {
+            "lo": float(np.quantile(slopes, 0.025)),
+            "hi": float(np.quantile(slopes, 0.975)),
+            "n_boot": len(slopes),
+        }
+    out["expected"] = "negative slope = exponential decay with hop distance"
+    if not out["interpretable"]:
+        out["note"] = (
+            f"UNINTERPRETABLE: fitted from {n_levels} hop level(s), fewer than the "
+            f"{MIN_HOP_LEVELS_FOR_A_FIT} required by SPEC Sec. 12 / D11(a). Use a "
+            "ring or path topology over 12-24 agents to obtain diameter >= 6."
+        )
+    return out

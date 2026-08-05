@@ -30,6 +30,8 @@ __all__ = [
     "CalibrationError",
     "QUANTILES",
     "assert_shared_calibration",
+    "d7_grid_from_records",
+    "D7_WINDOW_LENGTHS",
 ]
 
 #: Quantiles recorded for every calibration. SPEC Sec. 11: log distributions,
@@ -256,3 +258,72 @@ def assert_shared_calibration(
         raise CalibrationError("arms disagree about the environment fingerprint")
 
     return present[0][1].calibration_id
+
+
+# --------------------------------------------------------------------------- #
+# D7-AMENDED: the sensitivity grid is derived, not hard-coded
+# --------------------------------------------------------------------------- #
+
+#: SPEC Sec. 12 / D7-AMENDED: the calibration window lengths whose resulting
+#: delta_base values form H7's sensitivity grid.
+D7_WINDOW_LENGTHS: tuple[int, ...] = (6, 8, 10)
+
+#: If the derived grid's max/min is below this, the sensitivity check tests
+#: nothing and must be widened deliberately.
+D7_MIN_SPREAD = 1.5
+
+#: The deliberate widening applied when the derived spread is too narrow.
+D7_WIDEN_FACTOR = 2.0
+
+
+def d7_grid_from_records(
+    records: dict[int, "CalibrationRecord"],
+    min_spread: float = D7_MIN_SPREAD,
+    widen_factor: float = D7_WIDEN_FACTOR,
+) -> dict[str, Any]:
+    """Build H7's delta_base sensitivity grid from real calibrations.
+
+    SPEC Sec. 12 / D7-AMENDED: run the D6 calibration at windows 6/8/10 on the
+    *actual* H7 environment; the three resulting ``delta_base`` values ARE the
+    grid. Then the spread check: if ``max/min < min_spread`` the grid tests
+    nothing, so it is widened deliberately to ``+/- widen_factor`` around the
+    calibrated value -- and the fact that this was done is recorded, because a
+    silently widened grid is a different experiment from the one specified.
+    """
+    if not records:
+        raise CalibrationError("no calibrations supplied: cannot derive a D7 grid")
+    derived = {int(w): float(rec.delta_base) for w, rec in sorted(records.items())}
+    values = sorted(derived.values())
+    spread = values[-1] / values[0] if values[0] > 0 else float("inf")
+
+    out: dict[str, Any] = {
+        "windows": sorted(derived),
+        "derived_delta_base": derived,
+        "spread_max_over_min": spread,
+        "min_spread_required": min_spread,
+        "widened": False,
+        "grid": values,
+        "rule": (
+            "SPEC Sec. 12 / D7-AMENDED: grid = delta_base measured at calibration "
+            f"windows {sorted(derived)} on the actual H7 environment"
+        ),
+    }
+    if spread < min_spread:
+        centre = float(np.median(values))
+        widened = sorted({centre / widen_factor, centre, centre * widen_factor})
+        out.update(
+            {
+                "widened": True,
+                "grid": widened,
+                "widening_centre": centre,
+                "widening_factor": widen_factor,
+                "widening_reason": (
+                    f"derived spread {spread:.3f}x is below the {min_spread}x "
+                    "minimum, so the window sweep would test nothing. Widened "
+                    f"deliberately to +/-{widen_factor}x around the calibrated "
+                    "value, per SPEC Sec. 12 / D7-AMENDED. This is a disclosed "
+                    "deviation from the derived grid, not a silent one."
+                ),
+            }
+        )
+    return out

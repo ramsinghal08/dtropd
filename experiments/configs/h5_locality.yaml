@@ -1,0 +1,69 @@
+# H5's locality condition (SPEC Sec. 12 / D11(b)) and the cross-version
+# Assumption-2 measurement (D11(c), D13 exception).
+#
+# The primary environment (reward_spec_version v1) has a GLOBAL team term, so
+# r_i depends on every agent at every hop distance: Assumption 2(i) is violated
+# BY CONSTRUCTION. "v1-local" sums the team term over N_i instead, so the
+# assumption actually holds -- and that is the honest place to test the
+# theorem's prediction.
+#
+# Both arms are purpose: environment_property. They span reward spec versions,
+# which D13 permits ONLY because the environments themselves are the subject:
+# this measures whether Assumption 2 holds, NOT how algorithms perform. It is
+# labelled CROSS-VERSION in the report.
+#
+# D11(a): a ring over 16 agents gives diameter 8, so the decay fit has >= 4 hop
+# levels. A slope from fewer is reported as uninterpretable.
+name: h5_locality
+notes: >-
+  CROSS-VERSION environment-property measurement (D13 exception). Compares
+  whether Assumption 2 holds under a global vs neighbourhood team term.
+  NOT an algorithm comparison.
+out_dir: runs/h5_locality
+seeds: [0, 1, 2]
+auto_calibrate: false
+
+base:
+  env:
+    n_agents: 16
+    n_targets: 3
+    capture_group_size: 3
+    max_cycles: 50
+    heterogeneous: false
+    local_ratio: 0.5
+    reward_spec_version: v1
+  network:
+    hidden_sizes: [64, 64]
+  ppo:
+    lr: 1.0e-3
+    inner_epochs: 4
+    num_minibatches: 4
+  distill:
+    enabled: false
+    kappa: 100.0
+  instrument:
+    decay_probe: true
+    decay_probe_interval: 25
+    decay_probe_agents: 6
+    decay_probe_episodes: 16
+  graph:
+    topology: ring          # diameter 8 over 16 agents (D11(a))
+  train:
+    algo: ippo
+    total_epochs: 60
+    num_envs: 20
+    device: cpu
+    eval_interval: 30
+    eval_episodes: 16
+
+arms:
+  - name: global_team_v1
+    algo: ippo
+    condition: assumption2_violated
+    purpose: environment_property
+  - name: local_team_v1local
+    algo: ippo
+    condition: assumption2_holds
+    purpose: environment_property
+    overrides:
+      env.reward_spec_version: v1-local
