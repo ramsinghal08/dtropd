@@ -299,6 +299,28 @@ def _cmd_sweep(args: argparse.Namespace) -> int:
     report = sweep_report(manifest)
     (plan.out_dir / "report.json").write_text(json.dumps(report, indent=2, default=str))
 
+    # Each hypothesis plots ITS OWN decision quantity. Final return is the
+    # outcome variable for H7 and nothing else; drawing it for H1/H2/H3/H6
+    # produces an authoritative-looking figure of the wrong thing, which
+    # happened three times before the default was changed.
+    from .hypothesis_figures import RETURN_IS_THE_OUTCOME, figure_for_sweep
+
+    hyp = figure_for_sweep(plan.name, manifest, plan.out_dir / "figures")
+    if hyp:
+        report["hypothesis_figure"] = hyp
+        (plan.out_dir / "report.json").write_text(json.dumps(report, indent=2, default=str))
+        if not any(plan.name.startswith(p) for p in RETURN_IS_THE_OUTCOME):
+            logger.info(
+                "%s decides on its own quantity, not final return; the return "
+                "comparison figure is skipped for it.", plan.name,
+            )
+            print(json.dumps({
+                "manifest": str(manifest_path),
+                "report": str(plan.out_dir / "report.json"),
+                "figure": hyp.get("figure"),
+            }, indent=2))
+            return 0
+
     figure = Path(args.figure) if args.figure else plan.out_dir / "figures" / "comparison.png"
     if not report.get("per_arm"):
         # An environment-property sweep (H4/H5 scale, the D11(c) probe) has no

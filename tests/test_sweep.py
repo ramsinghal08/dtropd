@@ -795,3 +795,50 @@ def test_h5_locality_config_has_enough_graph_diameter():
     adj = build_graph(cfg.graph.topology, cfg.env.n_agents, cfg.graph.degree, np.random.default_rng(0))
     diameter = max(max(graph_distances(adj, i)) for i in range(cfg.env.n_agents))
     assert diameter >= MIN_HOP_LEVELS_FOR_A_FIT + 2, diameter
+
+
+# --------------------------------------------------------------------------- #
+# Each hypothesis plots its own decision quantity (not final return)
+# --------------------------------------------------------------------------- #
+
+
+def test_only_h7_uses_final_return_as_its_outcome():
+    """The root cause of three wrong figures: one default outcome variable.
+
+    ``plot_comparison`` draws final return, which is right for H7 and irrelevant
+    for H1/H2/H3/H6. The bug was never in a particular figure -- it was that the
+    plotter had a single default and every sweep silently inherited it.
+    """
+    from dtropd.hypothesis_figures import HYPOTHESIS_FIGURES, RETURN_IS_THE_OUTCOME
+
+    assert RETURN_IS_THE_OUTCOME == ("h7",), (
+        "final return is the decision quantity for H7 alone; adding another "
+        "hypothesis here needs a reason recorded in SPEC Sec. 6"
+    )
+    for prefix in ("h1", "h2", "h3"):
+        assert prefix in HYPOTHESIS_FIGURES, (
+            f"{prefix} has no hypothesis figure, so it would fall back to the "
+            "return plot -- the exact defect this registry removes"
+        )
+        assert prefix not in RETURN_IS_THE_OUTCOME
+
+
+@pytest.mark.parametrize("name", ["h1_chattering", "h2_kl_direction", "h3_radius"])
+def test_mechanism_configs_log_what_their_hypothesis_decides_on(name):
+    """A config that does not log its own outcome variable is unanswerable.
+
+    H1 needs per-edge sign flips, H2 needs per-edge sigma on both ends, H3 needs
+    delta_i (always logged). Discovering the field is missing AFTER a multi-hour
+    sweep is how the same run gets done twice.
+    """
+    plan = load_sweep_config(CONFIGS / f"{name}.yaml")
+    inst = plan.base.instrument
+    if name in ("h1_chattering", "h2_kl_direction"):
+        assert inst.per_edge_gradients, f"{name} needs per-edge gradients"
+        assert inst.per_edge_detail, f"{name} needs per-edge rows (sigma_i, sigma_j, D_ij)"
+        assert inst.per_edge_gradient_interval == 1, (
+            f"{name} interval-gates its own measurement, thinning the signal"
+        )
+    assert len(plan.seeds) >= 10, (
+        f"{name} has {len(plan.seeds)} seeds; SPEC Sec. 7 requires >= 10"
+    )

@@ -25,7 +25,7 @@ notes: >-
   H2 KL direction. forward_kl_distill vs dtropd, sigma on high-D_ij edges.
   beta_max raised to 0.3 -- diagnostic only, NOT comparable to H6/H7.
 out_dir: runs/h2_kl_direction
-seeds: [0, 1, 2, 3, 4]
+seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 auto_calibrate: true
 
 base:
