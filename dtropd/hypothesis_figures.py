@@ -195,16 +195,33 @@ def h1_figure(manifest: dict[str, Any], out_path: Path) -> dict[str, Any]:
     ax.set_xticklabels(labels, rotation=20, fontsize=8)
     ax.set_xlabel(r"$|D_{ij} - \delta_i|$  (distance to the trust boundary)")
     ax.set_ylabel("social-gradient sign-flip RATE (flips / edges in bucket)")
-    ax.set_title("H1: chattering — flips near the boundary, per attenuation mode\n"
-                 "confirmed if hard_* spike at the left and continuous stays flat")
+    crossings_early = boundary_crossing_rate(manifest)
+    rate = max(
+        (v["rate"] for k, v in crossings_early.items()
+         if k != "_verdict" and v["edge_epoch_transitions"]), default=float("nan")
+    )
+    untestable = np.isfinite(rate) and rate < 0.01
+    ax.set_title(
+        "H1: chattering — flips near the boundary, per attenuation mode\n"
+        + (f"UNTESTABLE AT THIS HORIZON — max boundary-crossing rate {rate:.4f} < 0.01"
+           if untestable else
+           f"boundary-crossing rate {rate:.3f} — the mode contrast is interpretable"),
+        color="tab:red" if untestable else "black",
+    )
     ax.grid(alpha=0.3)
     ax.legend(fontsize=9)
 
-    crossings = boundary_crossing_rate(manifest)
-    summary["boundary_crossings"] = crossings
-    verdict = crossings.get("_verdict", "")
-    fig.text(0.5, 0.005, f"boundary-crossing check: {verdict}", ha="center",
-             fontsize=8, color="tab:red" if "UNTESTABLE" in verdict else "black")
+    summary["boundary_crossings"] = crossings_early
+    summary["max_crossing_rate"] = rate
+    summary["verdict"] = crossings_early.get("_verdict", "")
+    # Magnitude is ruled out as an explanation for an H1 null (the social term is
+    # ~24% of the update), so the crossing rate is the ONLY live explanation and
+    # drives the stated verdict rather than sitting in a footnote.
+    fig.text(0.5, 0.005,
+             "magnitude ruled out (social term ~24% of the update); "
+             f"crossing rate is the deciding quantity: {summary['verdict']}",
+             ha="center", fontsize=8,
+             color="tab:red" if untestable else "black")
     fig.tight_layout(rect=(0, 0.045, 1, 1))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=150)
@@ -244,7 +261,9 @@ def h2_figure(manifest: dict[str, Any], out_path: Path, top_quantile: float = 0.
     """
     series: dict[str, dict[int, list[float]]] = defaultdict(lambda: defaultdict(list))
     targets: dict[str, dict[int, list[tuple[float, float]]]] = defaultdict(lambda: defaultdict(list))
+    n_seeds: dict[str, int] = defaultdict(int)
     for arm, dirs in _agg(manifest).items():
+        n_seeds[arm] = len(dirs)
         for run in dirs:
             meta_path = run / "metadata.json"
             act_dim = 2
@@ -281,9 +300,18 @@ def h2_figure(manifest: dict[str, Any], out_path: Path, top_quantile: float = 0.
     for arm in sorted(series):
         epochs = sorted(series[arm])
         vals = [float(np.mean(series[arm][e])) for e in epochs]
-        line, = ax.plot(epochs, vals, "-o", ms=3, label=f"{arm}: student $\\sigma_i$")
+        cis = [bootstrap_ci(series[arm][e]) for e in epochs]
+        lo = [c["lo"] for c in cis]
+        hi = [c["hi"] for c in cis]
+        line, = ax.plot(epochs, vals, "-o", ms=3,
+                        label=f"{arm}: student $\\sigma_i$ (n={n_seeds.get(arm, 0)} seeds)")
+        ax.fill_between(epochs, lo, hi, alpha=0.2, color=line.get_color())
         colours[arm] = line.get_color()
-        summary["arms"][arm] = {"epochs": epochs, "sigma_i": vals, "final_sigma_i": vals[-1]}
+        summary["arms"][arm] = {
+            "epochs": epochs, "sigma_i": vals, "final_sigma_i": vals[-1],
+            "ci_lo": lo, "ci_hi": hi, "n_seeds": n_seeds.get(arm, 0),
+            "edges_per_epoch": [len(series[arm][e]) for e in epochs],
+        }
     # Predicted limits, drawn once from the reverse arm's edges.
     ref = next((a for a in sorted(targets) if "forward" not in a), sorted(targets)[0])
     epochs = sorted(targets[ref])
@@ -298,13 +326,37 @@ def h2_figure(manifest: dict[str, Any], out_path: Path, top_quantile: float = 0.
     ax.set_xlabel("epoch")
     ax.set_ylabel(r"student $\sigma_i$ on high-$D_{ij}$ edges")
     ax.set_title("H2: KL direction and entropy inflation\n"
-                 f"edges above the {int(top_quantile*100)}th percentile of $D_{{ij}}$")
+                 f"edges above the {int(top_quantile*100)}th percentile of $D_{{ij}}$; "
+                 "bands are 95% bootstrap CIs over edges")
+    # State the reconstruction precisely -- part of this line is inferred.
+    fig.text(
+        0.5, 0.005,
+        "Forward-KL limit is RECONSTRUCTED, not logged: "
+        r"$(\mu_i-\mu_j)^2$ is recovered per edge by inverting the logged reverse "
+        r"$D_{ij}$ via $KL=\log(\sigma_j/\sigma_i)+(\sigma_i^2+gap^2)/(2\sigma_j^2)-0.5$ "
+        "using logged per-edge sigma_i, sigma_j and act_dim, then averaged over the "
+        "same high-$D_{ij}$ edge set. Assumes similar per-dimension scales. "
+        r"$\sigma_j$ (reverse limit) is logged directly.",
+        ha="center", fontsize=6.5, wrap=True,
+    )
     ax.grid(alpha=0.3)
     ax.legend(fontsize=8)
-    fig.tight_layout()
+    fig.tight_layout(rect=(0, 0.075, 1, 1))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
+    summary["reconstruction"] = {
+        "reverse_limit": "sigma_j, logged directly per edge",
+        "forward_limit": (
+            "sqrt(sigma_j^2 + gap^2) where gap^2 is RECONSTRUCTED per edge by "
+            "inverting the logged reverse D_ij: gap^2 = 2*sigma_j^2*(D_ij/act_dim "
+            "+ 0.5 - log(sigma_j/sigma_i)) - sigma_i^2, using logged per-edge "
+            "sigma_i and sigma_j; averaged over the same high-D_ij edge set. "
+            "Assumes similar per-dimension scales (sigma is a mean over dims)."
+        ),
+        "edge_set": f"edges with D_ij >= the {int(top_quantile*100)}th percentile, per epoch",
+        "aggregation": "mean over edges within an epoch, then over seeds",
+    }
     return summary
 
 

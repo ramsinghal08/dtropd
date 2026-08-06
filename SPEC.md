@@ -970,3 +970,65 @@ to measure the pathology I1 forbids:
   "intentionally degenerate critic" it requires. This contradicts I4 and warns
   so. `value_coef = 0` was rejected as the mechanism: I4's hard check exists for
   a reason and softening it to make an experiment runnable is the wrong trade.
+
+---
+
+## 18. Amendment — 2026-08-06
+
+### D18 — `kappa` is per radius SIGNAL, derived once and pinned across arms
+
+**The original value and why it was wrong.** `kappa = 100` was chosen to satisfy
+SPEC Sec. 2.2's `kappa * eta in [1, 3]` rule, where the radius signal is
+**nonstationarity** -- a KL in nats, of order `1e-5` in these runs. The H3
+ablation applied the same `kappa` to a **value-variance** signal of order `3.25`,
+giving `delta = delta_base * exp(-325) ~ 1e-141`, i.e. numerically zero, and
+`exp(-32440)` under the 10x reward rescale.
+
+This is a **units mismatch, not a performance problem.** `Var(V)` is not a KL,
+is not dimensionless, and scales with reward^2. One `kappa` cannot serve two
+signals whose magnitudes differ by five orders.
+
+**No outcome influenced this change.** Every value-variance arm was pinned at
+`delta = 0`, which is uninterpretable, so there was no result to prefer. The
+correction makes the arm able to express its prediction at all -- the same
+category as D16's manipulation check.
+
+**Derived value.** `kappa_valvar = 0.636`, from the **1x healthy arm alone**:
+observed `Var(V)` range `3.1463` (min 0.1240, max 3.2703), giving
+`kappa * range = 2.00` -- the midpoint of the `[1, 3]` band, mirroring Sec. 2.2's
+rule for the KL-valued signal.
+
+**The pinning constraint, which matters more than the value.**
+
+> `kappa_valvar` is derived ONCE, on the 1x healthy arm, and **pinned across all
+> three value-variance arms** (healthy, degenerate, reward10x).
+
+Deriving it per-arm from each arm's own `Var(V)` would hand the 10x arm a
+`kappa` ~100x smaller, exactly cancelling the reward scaling and
+**manufacturing the invariance H3 exists to detect**. The arm would then
+"demonstrate" scale-invariance by construction. `test_valvar_arms_share_one_pinned_kappa`
+asserts the three arms share one value, and that it differs from the
+nonstationarity arms'.
+
+**The validation rule is now signal-aware.** `kappa * eta in [1, 3]` is enforced
+for `nonstationarity` and **not** applied to `value_variance`, because `eta` is
+the KL early-stop cap and the product is meaningless for a non-KL signal --
+enforcing it is what demands `kappa ~ 100`. The value-variance arm instead
+carries a loud warning that its `kappa` must be derived against the observed
+`Var(V)` range and pinned.
+
+### I4 — amended: parameter drift is authoritative, explained variance is secondary
+
+I4 reads "critic loss present and optimized; explained variance logged and
+rising". EV is the natural check and **it does not detect a frozen critic**.
+
+Measured: with the critic frozen at initialisation -- parameter drift exactly
+`0.000000e+00`, zero value parameters requiring grad -- EV tracked a healthy
+critic almost exactly (0.0913 / 0.184 / 0.4277 vs 0.0913 / 0.1859 / 0.4279).
+The **value normaliser keeps adapting** when the critic cannot learn, so EV
+partly measures the normaliser.
+
+**Amendment:** for any degeneracy check, **critic parameter drift is
+authoritative**; EV is a secondary signal and can be actively misleading. EV
+remains logged and I4's requirement that the critic be optimized is unchanged --
+what changes is which instrument settles the question.

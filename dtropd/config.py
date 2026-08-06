@@ -501,6 +501,22 @@ class DistillConfig:
                 "distill.kappa == 0 collapses the trust radius to a constant. "
                 "Use radius_signal='fixed' to request that explicitly."
             )
+        if self.radius_signal == "value_variance":
+            # SPEC Sec. 2.2's kappa*eta rule presumes a KL-valued signal: eta is
+            # the KL early-stop cap, and the rule makes the radius span a useful
+            # range of the signal it actually sees. Var(V) is not a KL and is not
+            # even dimensionless -- it scales with reward^2 -- so kappa*eta is
+            # the wrong product for this ablation, and enforcing it would demand
+            # kappa ~ 100, which is exactly the units error that saturated the
+            # radius to exp(-325) = 0. The analogous rule, and the derivation
+            # actually used, is kappa * range(Var(V)) in [1, 3] measured ONCE on
+            # the 1x healthy arm -- see SPEC Sec. 18 / D18.
+            return [
+                f"radius_signal='value_variance' with kappa={self.kappa:.4g}: the "
+                "kappa*eta rule does not apply to a non-KL signal. kappa must be "
+                "derived against the observed Var(V) range (D18) and PINNED "
+                "across every value-variance arm."
+            ]
         product = self.kappa * eta
         if 1.0 <= product <= 3.0:
             return []

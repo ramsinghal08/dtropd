@@ -1,0 +1,75 @@
+# H6 MANIPULATION CHECK (b): is the adversary landing at all?
+#
+# H6 came out flat and the check is not yet decided. Part (a) is already
+# answered from existing logs: the trust gate does NOT attenuate Byzantine
+# edges (w 0.87074 byzantine vs 0.87193 honest, paired diff -0.0029
+# CI [-0.0071, +0.0008]), because the gate keys on D_ij -- the neighbour's
+# POLICY divergence -- while the adversary corrupts its GRADIENT and leaves the
+# broadcast policy untouched. The gate is blind to this threat model by
+# construction, so it cannot be what produced the flat curve.
+#
+# Part (b) is the remaining discriminator: the UNGATED control.
+#
+#   NaiveDistill has w = 1 structurally -- no gate at all. At f = 0.5:
+#     * if NaiveDistill COLLAPSES and D-TrOPD does not, something in D-TrOPD
+#       confers the robustness (not the gate, per (a) -- so the aggregator, or
+#       the KL early-stop absorbing the corrupted step);
+#     * if NaiveDistill ALSO shows nothing, the adversary is not landing and
+#       H6 is uninterpretable as run.
+#
+# THE ADVERSARY IS NOT STRENGTHENED. Same adaptive attack, same scale 0.5,
+# same f. Only the algorithm changes. Diagnosis before escalation.
+#
+# per_edge_detail is left on (default true) so w_ij is logged per edge and the
+# (a) split can be recomputed on these runs too -- NaiveDistill's w is
+# structurally 1, which is itself the control's sanity check.
+name: h6_manipulation
+notes: >-
+  H6 manipulation check (b). NaiveDistill (w=1, ungated) vs D-TrOPD at f=0.5
+  under the same adaptive adversary. 10 seeds, paired. Diagnosis only -- not an
+  algorithm-performance comparison for any headline table.
+out_dir: runs/h6_manipulation
+seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+auto_calibrate: true
+
+base:
+  env: {n_agents: 12, n_targets: 3, capture_group_size: 3, capture_radius: 0.3,
+        max_cycles: 50, heterogeneous: true, local_ratio: 0.5,
+        reward_spec_version: v1}
+  network: {hidden_sizes: [64, 64]}
+  ppo: {lr: 1.0e-3, inner_epochs: 4, num_minibatches: 4, kl_early_stop: 0.02}
+  distill:
+    enabled: true
+    beta_max: 0.05
+    warmup_fraction: 0.1
+    kappa: 100.0
+    delta_base: 0.1
+    gamma_attenuation: 1.0
+    attenuation: continuous
+    calibration: warmup
+    calibration_epochs: 8
+    calibration_pool_epochs: 2
+    aggregation: sum          # the arm H6 predicted would collapse
+    trimmed_mean_fraction: 0.2
+  instrument:
+    per_edge_gradients: true
+    per_edge_gradient_interval: 5
+    consensus_pull: true
+    decay_probe: false
+  graph: {topology: complete}
+  stress:
+    byzantine_mode: adaptive
+    byzantine_fraction: 0.5
+    byzantine_scale: 0.5      # UNCHANGED
+  train: {algo: dtropd, total_epochs: 150, num_envs: 40, device: cpu,
+          eval_interval: 25, eval_episodes: 16}
+
+arms:
+  # f=0 baselines, so "collapse" is measured against each algorithm's own
+  # unattacked run rather than against the other algorithm.
+  - {name: dtropd_f00,  algo: dtropd,        condition: gated,
+     overrides: {stress.byzantine_fraction: 0.0}}
+  - {name: dtropd_f50,  algo: dtropd,        condition: gated}
+  - {name: naive_f00,   algo: naive_distill, condition: ungated,
+     overrides: {stress.byzantine_fraction: 0.0}}
+  - {name: naive_f50,   algo: naive_distill, condition: ungated}

@@ -874,3 +874,55 @@ def test_boundary_crossing_rate_distinguishes_untestable_from_refuted():
     from dtropd.hypothesis_figures import boundary_crossing_rate
 
     assert boundary_crossing_rate({"runs": []})["_verdict"] == "NO DATA"
+
+
+def test_valvar_arms_share_one_pinned_kappa():
+    """SPEC Sec. 18 / D18: kappa_valvar is derived ONCE and pinned.
+
+    This is the constraint that matters more than the fix. Deriving kappa
+    per-arm from each arm's own Var(V) would give the 10x-reward arm a kappa
+    ~100x smaller -- exactly cancelling the reward scaling -- and would
+    MANUFACTURE the invariance H3 exists to detect. The arm would then "prove"
+    the value-variance radius is scale-invariant by construction.
+    """
+    plan = load_sweep_config(CONFIGS / "h3_radius.yaml")
+    kappas = {
+        arm.name: arm.config(plan.base).distill.kappa
+        for arm in plan.arms
+        if arm.config(plan.base).distill.radius_signal == "value_variance"
+    }
+    assert len(kappas) == 3, kappas
+    assert len(set(kappas.values())) == 1, (
+        f"value-variance arms use different kappas {kappas}; a per-arm kappa "
+        "normalises away the reward non-invariance being measured"
+    )
+
+    # And the nonstationarity arms keep their own kappa -- the two signals have
+    # different units and must not be forced onto one constant.
+    nonstat = {
+        arm.config(plan.base).distill.kappa
+        for arm in plan.arms
+        if arm.config(plan.base).distill.radius_signal == "nonstationarity"
+    }
+    assert nonstat == {100.0}, nonstat
+    assert set(kappas.values()) != nonstat, (
+        "one kappa for both signals is the units error D18 corrects"
+    )
+
+
+def test_kappa_eta_rule_is_not_applied_to_a_non_kl_signal():
+    """kappa*eta in [1,3] presumes a KL-valued signal; Var(V) is not one.
+
+    Enforcing it on value_variance demands kappa ~ 100, which is precisely the
+    units error that saturated the radius to exp(-325) = 0.
+    """
+    from dtropd.config import DistillConfig
+
+    valvar = DistillConfig(radius_signal="value_variance", kappa=0.636, enabled=True)
+    msgs = valvar.validate(eta=0.02, strict=True)  # must not raise
+    assert any("does not apply to a non-KL signal" in m for m in msgs)
+
+    with pytest.raises(ConfigError, match=r"kappa \* eta"):
+        DistillConfig(radius_signal="nonstationarity", kappa=0.636, enabled=True).validate(
+            eta=0.02, strict=True
+        )

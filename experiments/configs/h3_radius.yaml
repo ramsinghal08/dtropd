@@ -24,6 +24,16 @@
 # and warns so, and exists only for this arm -- because H3 predicts what happens
 # when the value signal is MEANINGLESS, not merely noisy. value_coef stays > 0.
 #
+# KAPPA_VALVAR = 0.636, DERIVED ONCE AND PINNED (SPEC Sec. 18 / D18).
+# Derived on the 1x HEALTHY arm alone: observed Var(V) range 3.1463
+# (min 0.1240, max 3.2703), and kappa * range = 2.00, the midpoint of the [1,3]
+# band that mirrors SPEC Sec. 2.2's kappa*eta rule.
+#
+# THE SAME VALUE IS PINNED ACROSS ALL THREE valvar ARMS. Deriving kappa per-arm
+# from each arm's own Var(V) would hand the 10x arm a kappa ~100x smaller and
+# NORMALISE AWAY the reward non-invariance H3 exists to detect -- manufacturing
+# the invariance being tested. A test asserts the three arms share one kappa.
+#
 # INVARIANT I1 IS NOT RELAXED. radius_signal='value_variance' emits a loud
 # config warning and exists ONLY as this ablation. Nothing from those arms may
 # be reported as D-TrOPD -- they are the counterexample, not the method.
@@ -70,9 +80,9 @@ arms:
                  env.capture_bonus: 10.0, env.collision_penalty: 1.0}}
   # --- value-variance radius (the I1 counterexample; NEVER reported as D-TrOPD)
   - {name: valvar_healthy,     algo: dtropd, condition: value_variance,
-     overrides: {distill.radius_signal: value_variance}}
+     overrides: {distill.radius_signal: value_variance, distill.kappa: 0.636}}
   - {name: valvar_degenerate,  algo: dtropd, condition: value_variance,
-     overrides: {distill.radius_signal: value_variance, ppo.degenerate_critic: true}}
+     overrides: {distill.radius_signal: value_variance, distill.kappa: 0.636, ppo.degenerate_critic: true}}
   - {name: valvar_reward10x,   algo: dtropd, condition: value_variance_10x,
-     overrides: {distill.radius_signal: value_variance, env.shaping_weight: 10.0,
-                 env.capture_bonus: 10.0, env.collision_penalty: 1.0}}
+     overrides: {distill.radius_signal: value_variance, distill.kappa: 0.636,
+                 env.shaping_weight: 10.0, env.capture_bonus: 10.0, env.collision_penalty: 1.0}}
