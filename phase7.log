@@ -1,0 +1,344 @@
+==============================================================
+ Phase 7 queue -- H6 (full budget), then H7 (four grid points)
+ workers: 8      started: Wed Aug  5 20:14:53 IST 2026
+==============================================================
+
+### STAGE 1/2 -- H6 Byzantine tolerance, full budget ###
+
+H6 Byzantine tolerance -- full budget
+  config : experiments/configs/h6_byzantine.yaml
+  out    : runs/h6_byzantine
+  workers: 8
+  cells  : 160 (16 arms x 10 seeds); resumable, safe to re-run
+
+budget check: full budget confirmed (150 epochs, 40 envs, 10 seeds)
+
+20:14:55 | INFO    | dtropd.sweep | deriving the shared calibration for environment d6d1998b2a14da16 (16 arms)
+20:15:09 | INFO    | dtropd.algorithms | calibrated at epoch 7 from 264 edges pooled over epochs [6, 7]: delta_base 0.1 -> 0.077999, gamma 1 -> 10.423 (id 7eaf633644664ce7)
+20:15:09 | INFO    | dtropd.sweep | running 160 cells on 8 workers
+trust gate is nearly inert: mean w_ij = 0.9632 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00692. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9550 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008546. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9607 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007544. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9563 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00849. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9618 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007197. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9616 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00742. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9634 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00702. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008226. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008149. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+20:31:47 | INFO    | dtropd.sweep | done adaptive_trim_f00 seed 0 (1/160)
+20:31:47 | INFO    | dtropd.sweep | done adaptive_trim_f00 seed 1 (2/160)
+20:31:47 | INFO    | dtropd.sweep | done adaptive_trim_f00 seed 2 (3/160)
+20:31:47 | INFO    | dtropd.sweep | done adaptive_trim_f00 seed 3 (4/160)
+20:31:47 | INFO    | dtropd.sweep | done adaptive_trim_f00 seed 4 (5/160)
+20:31:47 | INFO    | dtropd.sweep | done adaptive_trim_f00 seed 5 (6/160)
+20:31:52 | INFO    | dtropd.sweep | done adaptive_trim_f00 seed 6 (7/160)
+20:31:52 | INFO    | dtropd.sweep | done adaptive_trim_f00 seed 7 (8/160)
+trust gate is nearly inert: mean w_ij = 0.9504 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.009401. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9616 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00742. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9632 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00692. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9550 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008546. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9618 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007197. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008226. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9563 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00849. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+20:46:53 | INFO    | dtropd.sweep | done adaptive_trim_f00 seed 8 (9/160)
+trust gate is nearly inert: mean w_ij = 0.9634 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00702. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+20:47:25 | INFO    | dtropd.sweep | done adaptive_trim_f00 seed 9 (10/160)
+trust gate is nearly inert: mean w_ij = 0.9607 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007544. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008149. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+20:48:22 | INFO    | dtropd.sweep | done adaptive_trim_f10 seed 0 (11/160)
+20:48:22 | INFO    | dtropd.sweep | done adaptive_trim_f10 seed 1 (12/160)
+20:48:22 | INFO    | dtropd.sweep | done adaptive_trim_f10 seed 2 (13/160)
+20:48:27 | INFO    | dtropd.sweep | done adaptive_trim_f10 seed 3 (14/160)
+20:48:27 | INFO    | dtropd.sweep | done adaptive_trim_f10 seed 4 (15/160)
+20:48:27 | INFO    | dtropd.sweep | done adaptive_trim_f10 seed 5 (16/160)
+trust gate is nearly inert: mean w_ij = 0.9504 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.009401. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9616 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00742. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9550 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008546. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9632 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00692. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9618 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007197. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+21:01:03 | INFO    | dtropd.sweep | done adaptive_trim_f10 seed 6 (17/160)
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008226. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+21:01:53 | INFO    | dtropd.sweep | done adaptive_trim_f10 seed 7 (18/160)
+trust gate is nearly inert: mean w_ij = 0.9563 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00849. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+21:02:06 | INFO    | dtropd.sweep | done adaptive_trim_f10 seed 8 (19/160)
+trust gate is nearly inert: mean w_ij = 0.9634 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00702. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9607 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007544. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008149. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9504 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.009401. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+21:03:01 | INFO    | dtropd.sweep | done adaptive_trim_f10 seed 9 (20/160)
+21:03:01 | INFO    | dtropd.sweep | done adaptive_trim_f20 seed 0 (21/160)
+21:03:01 | INFO    | dtropd.sweep | done adaptive_trim_f20 seed 1 (22/160)
+21:03:01 | INFO    | dtropd.sweep | done adaptive_trim_f20 seed 2 (23/160)
+21:03:01 | INFO    | dtropd.sweep | done adaptive_trim_f20 seed 3 (24/160)
+trust gate is nearly inert: mean w_ij = 0.9616 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00742. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9632 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00692. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+21:14:56 | INFO    | dtropd.sweep | done adaptive_trim_f20 seed 4 (25/160)
+trust gate is nearly inert: mean w_ij = 0.9550 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008546. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+21:16:00 | INFO    | dtropd.sweep | done adaptive_trim_f20 seed 5 (26/160)
+21:16:00 | INFO    | dtropd.sweep | done adaptive_trim_f20 seed 6 (27/160)
+trust gate is nearly inert: mean w_ij = 0.9618 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007197. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008226. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+21:16:18 | INFO    | dtropd.sweep | done adaptive_trim_f20 seed 7 (28/160)
+trust gate is nearly inert: mean w_ij = 0.9563 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00849. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+21:16:43 | INFO    | dtropd.sweep | done adaptive_trim_f20 seed 8 (29/160)
+trust gate is nearly inert: mean w_ij = 0.9634 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00702. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+21:16:56 | INFO    | dtropd.sweep | done adaptive_trim_f20 seed 9 (30/160)
+21:17:04 | INFO    | dtropd.sweep | done adaptive_trim_f30 seed 0 (31/160)
+21:17:04 | INFO    | dtropd.sweep | done adaptive_trim_f30 seed 1 (32/160)
+trust gate is nearly inert: mean w_ij = 0.9607 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007544. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008149. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9504 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.009401. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+21:28:27 | INFO    | dtropd.sweep | done adaptive_trim_f30 seed 2 (33/160)
+trust gate is nearly inert: mean w_ij = 0.9616 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00742. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+21:29:23 | INFO    | dtropd.sweep | done adaptive_trim_f30 seed 3 (34/160)
+trust gate is nearly inert: mean w_ij = 0.9632 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00692. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+21:29:43 | INFO    | dtropd.sweep | done adaptive_trim_f30 seed 4 (35/160)
+trust gate is nearly inert: mean w_ij = 0.9550 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008546. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+21:29:58 | INFO    | dtropd.sweep | done adaptive_trim_f30 seed 5 (36/160)
+trust gate is nearly inert: mean w_ij = 0.9618 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007197. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+21:30:20 | INFO    | dtropd.sweep | done adaptive_trim_f30 seed 6 (37/160)
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008226. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+21:30:48 | INFO    | dtropd.sweep | done adaptive_trim_f30 seed 7 (38/160)
+21:30:54 | INFO    | dtropd.sweep | done adaptive_trim_f30 seed 8 (39/160)
+trust gate is nearly inert: mean w_ij = 0.9563 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00849. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9634 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00702. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+21:31:06 | INFO    | dtropd.sweep | done adaptive_trim_f30 seed 9 (40/160)
+trust gate is nearly inert: mean w_ij = 0.9607 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007544. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+21:43:19 | INFO    | dtropd.sweep | done adaptive_trim_f40 seed 0 (41/160)
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008149. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+21:44:31 | INFO    | dtropd.sweep | done adaptive_trim_f40 seed 1 (42/160)
+trust gate is nearly inert: mean w_ij = 0.9504 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.009401. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+21:45:23 | INFO    | dtropd.sweep | done adaptive_trim_f40 seed 2 (43/160)
+21:45:31 | INFO    | dtropd.sweep | done adaptive_trim_f40 seed 3 (44/160)
+trust gate is nearly inert: mean w_ij = 0.9616 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00742. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9632 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00692. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+21:45:51 | INFO    | dtropd.sweep | done adaptive_trim_f40 seed 4 (45/160)
+trust gate is nearly inert: mean w_ij = 0.9550 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008546. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+21:46:33 | INFO    | dtropd.sweep | done adaptive_trim_f40 seed 5 (46/160)
+21:46:34 | INFO    | dtropd.sweep | done adaptive_trim_f40 seed 6 (47/160)
+trust gate is nearly inert: mean w_ij = 0.9618 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007197. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008226. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+21:46:58 | INFO    | dtropd.sweep | done adaptive_trim_f40 seed 7 (48/160)
+trust gate is nearly inert: mean w_ij = 0.9563 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00849. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+21:59:09 | INFO    | dtropd.sweep | done adaptive_trim_f40 seed 8 (49/160)
+trust gate is nearly inert: mean w_ij = 0.9634 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00702. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:00:19 | INFO    | dtropd.sweep | done adaptive_trim_f40 seed 9 (50/160)
+trust gate is nearly inert: mean w_ij = 0.9607 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007544. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008149. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:00:53 | INFO    | dtropd.sweep | done adaptive_trim_f50 seed 0 (51/160)
+22:00:53 | INFO    | dtropd.sweep | done adaptive_trim_f50 seed 1 (52/160)
+trust gate is nearly inert: mean w_ij = 0.9504 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.009401. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:01:05 | INFO    | dtropd.sweep | done adaptive_trim_f50 seed 2 (53/160)
+trust gate is nearly inert: mean w_ij = 0.9616 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00742. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:01:44 | INFO    | dtropd.sweep | done adaptive_trim_f50 seed 3 (54/160)
+trust gate is nearly inert: mean w_ij = 0.9632 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00692. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:01:58 | INFO    | dtropd.sweep | done adaptive_trim_f50 seed 4 (55/160)
+trust gate is nearly inert: mean w_ij = 0.9550 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008546. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:02:28 | INFO    | dtropd.sweep | done adaptive_trim_f50 seed 5 (56/160)
+trust gate is nearly inert: mean w_ij = 0.9618 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007197. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008226. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9563 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00849. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9634 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00702. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9607 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007544. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:12:55 | INFO    | dtropd.sweep | done adaptive_trim_f50 seed 6 (57/160)
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008149. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:13:56 | INFO    | dtropd.sweep | done adaptive_trim_f50 seed 7 (58/160)
+trust gate is nearly inert: mean w_ij = 0.9504 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.009401. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:14:19 | INFO    | dtropd.sweep | done adaptive_trim_f50 seed 8 (59/160)
+trust gate is nearly inert: mean w_ij = 0.9616 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00742. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:14:54 | INFO    | dtropd.sweep | done adaptive_trim_f50 seed 9 (60/160)
+22:14:54 | INFO    | dtropd.sweep | done adaptive_sum_f00 seed 0 (61/160)
+22:14:54 | INFO    | dtropd.sweep | done adaptive_sum_f00 seed 1 (62/160)
+22:14:54 | INFO    | dtropd.sweep | done adaptive_sum_f00 seed 2 (63/160)
+22:14:54 | INFO    | dtropd.sweep | done adaptive_sum_f00 seed 3 (64/160)
+trust gate is nearly inert: mean w_ij = 0.9632 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00692. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:18:37 | INFO    | dtropd.sweep | done adaptive_sum_f00 seed 4 (65/160)
+trust gate is nearly inert: mean w_ij = 0.9550 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008546. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:19:20 | INFO    | dtropd.sweep | done adaptive_sum_f00 seed 5 (66/160)
+trust gate is nearly inert: mean w_ij = 0.9618 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007197. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:19:42 | INFO    | dtropd.sweep | done adaptive_sum_f00 seed 6 (67/160)
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008226. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:19:58 | INFO    | dtropd.sweep | done adaptive_sum_f00 seed 7 (68/160)
+trust gate is nearly inert: mean w_ij = 0.9563 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00849. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:21:32 | INFO    | dtropd.sweep | done adaptive_sum_f00 seed 8 (69/160)
+trust gate is nearly inert: mean w_ij = 0.9634 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00702. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:22:40 | INFO    | dtropd.sweep | done adaptive_sum_f00 seed 9 (70/160)
+trust gate is nearly inert: mean w_ij = 0.9607 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007544. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:27:50 | INFO    | dtropd.sweep | done adaptive_sum_f10 seed 0 (71/160)
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008149. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:28:46 | INFO    | dtropd.sweep | done adaptive_sum_f10 seed 1 (72/160)
+trust gate is nearly inert: mean w_ij = 0.9504 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.009401. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:32:25 | INFO    | dtropd.sweep | done adaptive_sum_f10 seed 2 (73/160)
+trust gate is nearly inert: mean w_ij = 0.9616 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00742. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:33:04 | INFO    | dtropd.sweep | done adaptive_sum_f10 seed 3 (74/160)
+trust gate is nearly inert: mean w_ij = 0.9632 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00692. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:33:44 | INFO    | dtropd.sweep | done adaptive_sum_f10 seed 4 (75/160)
+trust gate is nearly inert: mean w_ij = 0.9550 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008546. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:34:01 | INFO    | dtropd.sweep | done adaptive_sum_f10 seed 5 (76/160)
+trust gate is nearly inert: mean w_ij = 0.9618 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007197. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:35:15 | INFO    | dtropd.sweep | done adaptive_sum_f10 seed 6 (77/160)
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008226. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:36:17 | INFO    | dtropd.sweep | done adaptive_sum_f10 seed 7 (78/160)
+trust gate is nearly inert: mean w_ij = 0.9563 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00849. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:41:09 | INFO    | dtropd.sweep | done adaptive_sum_f10 seed 8 (79/160)
+trust gate is nearly inert: mean w_ij = 0.9634 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00702. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:42:23 | INFO    | dtropd.sweep | done adaptive_sum_f10 seed 9 (80/160)
+trust gate is nearly inert: mean w_ij = 0.9607 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007544. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:45:59 | INFO    | dtropd.sweep | done adaptive_sum_f20 seed 0 (81/160)
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008149. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:46:42 | INFO    | dtropd.sweep | done adaptive_sum_f20 seed 1 (82/160)
+trust gate is nearly inert: mean w_ij = 0.9504 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.009401. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:47:39 | INFO    | dtropd.sweep | done adaptive_sum_f20 seed 2 (83/160)
+trust gate is nearly inert: mean w_ij = 0.9616 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00742. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:47:50 | INFO    | dtropd.sweep | done adaptive_sum_f20 seed 3 (84/160)
+trust gate is nearly inert: mean w_ij = 0.9632 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00692. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:48:53 | INFO    | dtropd.sweep | done adaptive_sum_f20 seed 4 (85/160)
+trust gate is nearly inert: mean w_ij = 0.9550 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008546. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:49:58 | INFO    | dtropd.sweep | done adaptive_sum_f20 seed 5 (86/160)
+trust gate is nearly inert: mean w_ij = 0.9618 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007197. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:55:19 | INFO    | dtropd.sweep | done adaptive_sum_f20 seed 6 (87/160)
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008226. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+22:57:06 | INFO    | dtropd.sweep | done adaptive_sum_f20 seed 7 (88/160)
+trust gate is nearly inert: mean w_ij = 0.9563 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00849. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+23:00:56 | INFO    | dtropd.sweep | done adaptive_sum_f20 seed 8 (89/160)
+trust gate is nearly inert: mean w_ij = 0.9634 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00702. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+23:01:29 | INFO    | dtropd.sweep | done adaptive_sum_f20 seed 9 (90/160)
+trust gate is nearly inert: mean w_ij = 0.9607 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007544. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+23:02:53 | INFO    | dtropd.sweep | done adaptive_sum_f30 seed 0 (91/160)
+23:02:53 | INFO    | dtropd.sweep | done adaptive_sum_f30 seed 1 (92/160)
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008149. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9504 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.009401. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+23:03:30 | INFO    | dtropd.sweep | done adaptive_sum_f30 seed 2 (93/160)
+trust gate is nearly inert: mean w_ij = 0.9616 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00742. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+23:04:33 | INFO    | dtropd.sweep | done adaptive_sum_f30 seed 3 (94/160)
+trust gate is nearly inert: mean w_ij = 0.9632 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00692. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+23:20:50 | INFO    | dtropd.sweep | done adaptive_sum_f30 seed 4 (95/160)
+trust gate is nearly inert: mean w_ij = 0.9550 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008546. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+23:22:53 | INFO    | dtropd.sweep | done adaptive_sum_f30 seed 5 (96/160)
+trust gate is nearly inert: mean w_ij = 0.9618 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007197. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+23:26:41 | INFO    | dtropd.sweep | done adaptive_sum_f30 seed 6 (97/160)
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008226. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+23:34:22 | INFO    | dtropd.sweep | done adaptive_sum_f30 seed 7 (98/160)
+trust gate is nearly inert: mean w_ij = 0.9563 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00849. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9634 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00702. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+23:40:45 | INFO    | dtropd.sweep | done adaptive_sum_f30 seed 8 (99/160)
+23:40:45 | INFO    | dtropd.sweep | done adaptive_sum_f30 seed 9 (100/160)
+trust gate is nearly inert: mean w_ij = 0.9607 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007544. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+23:46:00 | INFO    | dtropd.sweep | done adaptive_sum_f40 seed 0 (101/160)
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008149. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+00:23:26 | INFO    | dtropd.sweep | done adaptive_sum_f40 seed 1 (102/160)
+trust gate is nearly inert: mean w_ij = 0.9504 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.009401. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+06:02:28 | INFO    | dtropd.sweep | done adaptive_sum_f40 seed 2 (103/160)
+trust gate is nearly inert: mean w_ij = 0.9616 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00742. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+07:56:28 | INFO    | dtropd.sweep | done adaptive_sum_f40 seed 3 (104/160)
+trust gate is nearly inert: mean w_ij = 0.9632 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00692. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+08:05:39 | INFO    | dtropd.sweep | done adaptive_sum_f40 seed 4 (105/160)
+trust gate is nearly inert: mean w_ij = 0.9550 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008546. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+08:06:06 | INFO    | dtropd.sweep | done adaptive_sum_f40 seed 5 (106/160)
+trust gate is nearly inert: mean w_ij = 0.9618 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007197. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+08:07:26 | INFO    | dtropd.sweep | done adaptive_sum_f40 seed 6 (107/160)
+08:07:31 | INFO    | dtropd.sweep | done adaptive_sum_f40 seed 7 (108/160)
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008226. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+08:07:36 | INFO    | dtropd.sweep | done adaptive_sum_f40 seed 8 (109/160)
+trust gate is nearly inert: mean w_ij = 0.9563 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00849. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9634 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00702. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+08:08:27 | INFO    | dtropd.sweep | done adaptive_sum_f40 seed 9 (110/160)
+trust gate is nearly inert: mean w_ij = 0.9607 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007544. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+08:13:33 | INFO    | dtropd.sweep | done adaptive_sum_f50 seed 0 (111/160)
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008149. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+08:16:23 | INFO    | dtropd.sweep | done adaptive_sum_f50 seed 1 (112/160)
+trust gate is nearly inert: mean w_ij = 0.9504 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.009401. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+08:19:03 | INFO    | dtropd.sweep | done adaptive_sum_f50 seed 2 (113/160)
+trust gate is nearly inert: mean w_ij = 0.9616 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00742. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+08:19:44 | INFO    | dtropd.sweep | done adaptive_sum_f50 seed 3 (114/160)
+trust gate is nearly inert: mean w_ij = 0.9632 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00692. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+08:21:10 | INFO    | dtropd.sweep | done adaptive_sum_f50 seed 4 (115/160)
+trust gate is nearly inert: mean w_ij = 0.9550 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008546. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9618 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007197. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+08:21:22 | INFO    | dtropd.sweep | done adaptive_sum_f50 seed 5 (116/160)
+08:21:22 | INFO    | dtropd.sweep | done adaptive_sum_f50 seed 6 (117/160)
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008226. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+08:37:07 | INFO    | dtropd.sweep | done adaptive_sum_f50 seed 7 (118/160)
+trust gate is nearly inert: mean w_ij = 0.9563 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00849. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+08:51:06 | INFO    | dtropd.sweep | done adaptive_sum_f50 seed 8 (119/160)
+trust gate is nearly inert: mean w_ij = 0.9634 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00702. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+08:54:06 | INFO    | dtropd.sweep | done adaptive_sum_f50 seed 9 (120/160)
+trust gate is nearly inert: mean w_ij = 0.9607 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007544. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+08:56:16 | INFO    | dtropd.sweep | done signflip_trim_f20 seed 0 (121/160)
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008149. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+08:56:38 | INFO    | dtropd.sweep | done signflip_trim_f20 seed 1 (122/160)
+trust gate is nearly inert: mean w_ij = 0.9504 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.009401. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+08:57:07 | INFO    | dtropd.sweep | done signflip_trim_f20 seed 2 (123/160)
+trust gate is nearly inert: mean w_ij = 0.9616 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00742. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+08:57:14 | INFO    | dtropd.sweep | done signflip_trim_f20 seed 3 (124/160)
+trust gate is nearly inert: mean w_ij = 0.9632 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00692. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+08:57:30 | INFO    | dtropd.sweep | done signflip_trim_f20 seed 4 (125/160)
+08:57:34 | INFO    | dtropd.sweep | done signflip_trim_f20 seed 5 (126/160)
+trust gate is nearly inert: mean w_ij = 0.9550 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008546. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9618 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007197. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+09:00:06 | INFO    | dtropd.sweep | done signflip_trim_f20 seed 6 (127/160)
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008226. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+09:01:45 | INFO    | dtropd.sweep | done signflip_trim_f20 seed 7 (128/160)
+trust gate is nearly inert: mean w_ij = 0.9563 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00849. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+09:03:05 | INFO    | dtropd.sweep | done signflip_trim_f20 seed 8 (129/160)
+trust gate is nearly inert: mean w_ij = 0.9634 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00702. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+09:03:32 | INFO    | dtropd.sweep | done signflip_trim_f20 seed 9 (130/160)
+trust gate is nearly inert: mean w_ij = 0.9607 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007544. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+09:03:55 | INFO    | dtropd.sweep | done signflip_trim_f40 seed 0 (131/160)
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008149. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+09:04:12 | INFO    | dtropd.sweep | done signflip_trim_f40 seed 1 (132/160)
+trust gate is nearly inert: mean w_ij = 0.9504 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.009401. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9616 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00742. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+09:04:34 | INFO    | dtropd.sweep | done signflip_trim_f40 seed 2 (133/160)
+09:04:34 | INFO    | dtropd.sweep | done signflip_trim_f40 seed 3 (134/160)
+trust gate is nearly inert: mean w_ij = 0.9632 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00692. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+09:07:00 | INFO    | dtropd.sweep | done signflip_trim_f40 seed 4 (135/160)
+trust gate is nearly inert: mean w_ij = 0.9550 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008546. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+09:08:53 | INFO    | dtropd.sweep | done signflip_trim_f40 seed 5 (136/160)
+trust gate is nearly inert: mean w_ij = 0.9618 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007197. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+09:10:19 | INFO    | dtropd.sweep | done signflip_trim_f40 seed 6 (137/160)
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008226. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+09:10:49 | INFO    | dtropd.sweep | done signflip_trim_f40 seed 7 (138/160)
+trust gate is nearly inert: mean w_ij = 0.9563 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00849. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9634 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00702. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+09:11:02 | INFO    | dtropd.sweep | done signflip_trim_f40 seed 8 (139/160)
+trust gate is nearly inert: mean w_ij = 0.9607 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007544. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008149. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+09:11:33 | INFO    | dtropd.sweep | done signflip_trim_f40 seed 9 (140/160)
+09:11:33 | INFO    | dtropd.sweep | done signflip_sum_f20 seed 0 (141/160)
+09:11:33 | INFO    | dtropd.sweep | done signflip_sum_f20 seed 1 (142/160)
+trust gate is nearly inert: mean w_ij = 0.9504 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.009401. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+09:13:48 | INFO    | dtropd.sweep | done signflip_sum_f20 seed 2 (143/160)
+trust gate is nearly inert: mean w_ij = 0.9616 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00742. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+09:16:04 | INFO    | dtropd.sweep | done signflip_sum_f20 seed 3 (144/160)
+trust gate is nearly inert: mean w_ij = 0.9632 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00692. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+09:17:36 | INFO    | dtropd.sweep | done signflip_sum_f20 seed 4 (145/160)
+trust gate is nearly inert: mean w_ij = 0.9550 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008546. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+09:18:01 | INFO    | dtropd.sweep | done signflip_sum_f20 seed 5 (146/160)
+trust gate is nearly inert: mean w_ij = 0.9618 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007197. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+09:18:10 | INFO    | dtropd.sweep | done signflip_sum_f20 seed 6 (147/160)
+09:18:12 | INFO    | dtropd.sweep | done signflip_sum_f20 seed 7 (148/160)
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008226. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+trust gate is nearly inert: mean w_ij = 0.9563 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00849. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+09:18:41 | INFO    | dtropd.sweep | done signflip_sum_f20 seed 8 (149/160)
+trust gate is nearly inert: mean w_ij = 0.9634 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.00702. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+09:18:59 | INFO    | dtropd.sweep | done signflip_sum_f20 seed 9 (150/160)
+trust gate is nearly inert: mean w_ij = 0.9607 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.007544. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+09:21:03 | INFO    | dtropd.sweep | done signflip_sum_f40 seed 0 (151/160)
+trust gate is nearly inert: mean w_ij = 0.9575 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.008149. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+09:32:02 | INFO    | dtropd.sweep | done signflip_sum_f40 seed 1 (152/160)
+trust gate is nearly inert: mean w_ij = 0.9504 > 0.95 with delta_base=0.078, gamma=10.42 and median D_ij ~ 0.009401. This run is behaviourally NaiveDistill, not D-TrOPD. Calibrate it (distill.calibration: warmup, or `run.py calibrate`) before reporting it -- SPEC Sec. 10 / D1.
+09:36:21 | INFO    | dtropd.sweep | done signflip_sum_f40 seed 2 (153/160)
+09:36:37 | INFO    | dtropd.sweep | done signflip_sum_f40 seed 3 (154/160)
+09:36:46 | INFO    | dtropd.sweep | done signflip_sum_f40 seed 4 (155/160)
+09:36:46 | INFO    | dtropd.sweep | done signflip_sum_f40 seed 5 (156/160)
+09:37:06 | INFO    | dtropd.sweep | done signflip_sum_f40 seed 6 (157/160)
+09:37:11 | INFO    | dtropd.sweep | done signflip_sum_f40 seed 7 (158/160)
+09:37:58 | INFO    | dtropd.sweep | done signflip_sum_f40 seed 8 (159/160)
+09:38:50 | INFO    | dtropd.sweep | done signflip_sum_f40 seed 9 (160/160)
+09:38:55 | INFO    | dtropd.run | wrote runs/h6_byzantine/figures/comparison.png
+{
+  "manifest": "runs/h6_byzantine/manifest.json",
+  "report": "runs/h6_byzantine/report.json",
+  "figure": "runs/h6_byzantine/figures/comparison.png"
+}
