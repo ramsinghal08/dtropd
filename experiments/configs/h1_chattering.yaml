@@ -1,0 +1,53 @@
+# H1 -- no chattering under continuous attenuation (SPEC Sec. 6).
+#
+# PRE-REGISTERED DECISION RULE (SPEC Sec. 6, H1):
+#   "Measure: per-edge social-gradient SIGN FLIPS per epoch, bucketed by
+#    |D_ij - delta_i|.  CONFIRMED IF the switched variant spikes near the
+#    boundary and the attenuated one does not."
+#
+# DECIDING QUANTITY:
+#   sign_flip_rate in the NEAREST-BOUNDARY bucket (|D_ij - delta_i| <= 0.005),
+#   continuous vs hard_switch vs hard_cutoff.
+#   Confirmed if hard_* show a rate in that bucket materially above their own
+#   far-from-boundary buckets, while `continuous` is flat across buckets.
+#   The within-arm comparison across buckets is the test -- an overall rate
+#   difference between arms is NOT chattering, it is just a different gate.
+name: h1_chattering
+notes: >-
+  H1 chattering. continuous vs hard_switch vs hard_cutoff attenuation, sign
+  flips bucketed by distance to the trust boundary. reward_spec_version v1.
+out_dir: runs/h1_chattering
+seeds: [0, 1, 2, 3, 4]
+auto_calibrate: true
+
+base:
+  env: {n_agents: 12, n_targets: 3, capture_group_size: 3, max_cycles: 50,
+        heterogeneous: true, local_ratio: 0.5, reward_spec_version: v1}
+  network: {hidden_sizes: [64, 64]}
+  ppo: {lr: 1.0e-3, inner_epochs: 4, num_minibatches: 4, kl_early_stop: 0.02}
+  distill:
+    enabled: true
+    beta_max: 0.05
+    warmup_fraction: 0.1
+    kappa: 100.0
+    calibration: warmup
+    calibration_epochs: 8
+    calibration_pool_epochs: 2
+  instrument:
+    per_edge_gradients: true      # H1's measurement -- MUST be on
+    per_edge_gradient_interval: 1 # every epoch; sign flips are the signal
+    per_edge_detail: true
+    consensus_pull: true          # also yields social_grad_fraction
+    sign_flip_buckets: [0.0, 0.005, 0.01, 0.02, 0.05, 0.1]
+    decay_probe: false
+  graph: {topology: complete}
+  train: {algo: dtropd, total_epochs: 60, num_envs: 20, device: cpu,
+          eval_interval: 30, eval_episodes: 16}
+
+arms:
+  - {name: continuous,  algo: dtropd, condition: attenuation,
+     overrides: {distill.attenuation: continuous}}
+  - {name: hard_switch, algo: dtropd, condition: attenuation,
+     overrides: {distill.attenuation: hard_switch}}
+  - {name: hard_cutoff, algo: dtropd, condition: attenuation,
+     overrides: {distill.attenuation: hard_cutoff}}

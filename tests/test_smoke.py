@@ -88,7 +88,12 @@ def test_unknown_algorithm_fails_loudly():
     from dtropd.algorithms import ALGORITHMS, build_algorithm
 
     # Every algorithm SPEC Sec. 5 names is now implemented.
-    assert set(ALGORITHMS) == {"ippo", "dtropd", "naive_distill", "mappo", "happo"}
+    assert {"ippo", "dtropd", "naive_distill", "mappo", "happo"} <= set(ALGORITHMS)
+    # Ablation arms are registered too, but are NOT part of the headline set --
+    # they exist to measure a pathology, never to be run as "the method".
+    assert set(ALGORITHMS) - {"ippo", "dtropd", "naive_distill", "mappo", "happo"} == {
+        "forward_kl_distill"
+    }
 
     cfg = Config()
     cfg.train.algo = "nope"

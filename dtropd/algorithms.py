@@ -137,8 +137,25 @@ class BaseAlgorithm(abc.ABC):
                     critic_obs_dim=self.critic_obs_dim,
                 ).to(self.device)
             )
+        if cfg.ppo.degenerate_critic:
+            # H3 ABLATION ONLY (SPEC Sec. 6): a critic carrying no information.
+            # Frozen at initialisation rather than merely badly trained, because
+            # H3's prediction is about what happens when the value signal is
+            # *meaningless*, not when it is noisy. Contradicts I4 by design and
+            # says so loudly at config validation.
+            for ac in self.agents:
+                for p in ac.value_parameters():
+                    p.requires_grad_(False)
+            logger.warning(
+                "ppo.degenerate_critic: critics frozen at initialisation. This "
+                "contradicts invariant I4 and is valid ONLY as the H3 ablation; "
+                "nothing from this run may be reported as D-TrOPD."
+            )
         self.optimizers = [
-            torch.optim.Adam(ac.parameters(), lr=cfg.ppo.lr, eps=1e-5) for ac in self.agents
+            torch.optim.Adam(
+                [p for p in ac.parameters() if p.requires_grad], lr=cfg.ppo.lr, eps=1e-5
+            )
+            for ac in self.agents
         ]
         # Per-agent critic-target normalisers (see utils.RunningMeanStd).
         self.value_normalizers = [RunningMeanStd() for _ in range(self.n_agents)]
@@ -1764,6 +1781,52 @@ class DTrOPD(SnapshotDistillBase):
 
 
 # --------------------------------------------------------------------------- #
+# H2 ablations: the KL direction, as separate named algorithms
+# --------------------------------------------------------------------------- #
+
+
+class ForwardKLDistill(DTrOPD):
+    """D-TrOPD with the social KL reversed: ``KL(pi_j || pi_theta_i)``.
+
+    **This is an ablation arm and must never be the default.** Invariant I2
+    forbids a direction *switch inside the update*, and it stays forbidden: the
+    main path has no branch, `distill.kl_direction` still refuses anything but
+    ``reverse``, and the direction is chosen here by which *class* you
+    instantiate. SPEC Sec. 2.3's rule is that there is exactly one direction
+    everywhere in the D-TrOPD code path -- not that the forward direction may
+    never be measured. H2 is precisely the experiment that measures it, and
+    SPEC Sec. 5 Phase 4 anticipates it: "forward/switched arms must be separate,
+    explicitly named ablation algorithms."
+
+    H2 predicts that forward KL inflates the student's entropy: minimising
+    ``KL(teacher || student)`` is mode-covering, so it drives
+    ``sigma_i^2 -> sigma_j^2 + (mu_i - mu_j)^2`` -- the student widens to cover
+    the teacher's mass *plus* the mean gap. Reverse KL is mode-seeking and holds
+    at ``sigma_j^2``. The gap between those two limits is the mismatch term
+    ``(mu_i - mu_j)^2``, so the effect is largest exactly on the high-``D_ij``
+    edges the trust gate is supposed to be attenuating.
+    """
+
+    name = "forward_kl_distill"
+
+    def _per_neighbor_kl(
+        self, state: TeacherBundle, out: dict[str, Tensor], idx: Tensor
+    ) -> Tensor:
+        """``E_s[ KL( pi_j^(t)(.|s) || pi_theta_i(.|s) ) ]`` -- teacher first.
+
+        The teacher tensors remain detached constants, so gradients still flow
+        only to ``theta_i`` (I6 is untouched); only the argument order differs.
+        """
+        n = len(state.neighbors)
+        mu = out["mu"].unsqueeze(0).expand(n, -1, -1)
+        log_std = out["log_std"].unsqueeze(0).expand(n, -1, -1)
+        kl = gaussian_kl(
+            state.teacher_mu[:, idx], state.teacher_log_std[:, idx], mu, log_std
+        )
+        return kl.mean(dim=1)
+
+
+# --------------------------------------------------------------------------- #
 # Registry
 # --------------------------------------------------------------------------- #
 
@@ -1773,6 +1836,8 @@ ALGORITHMS: dict[str, type[BaseAlgorithm]] = {
     "naive_distill": NaiveDistill,
     "mappo": MAPPO,
     "happo": HAPPO,
+    # H2 ablation only -- never a default, never reachable by config switch.
+    "forward_kl_distill": ForwardKLDistill,
 }
 
 _PLANNED: dict[str, str] = {}

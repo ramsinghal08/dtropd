@@ -157,15 +157,80 @@ def test_i2_kl_helper_has_no_direction_switch():
 
 
 def test_i2_no_forward_kl_branch_in_the_package():
-    """Source scan: no forward-KL fallback may exist anywhere in ``dtropd/``."""
-    banned = ("forward_kl", "kl_forward", "use_forward", "switch_kl", "flip_kl")
+    """No forward-KL *fallback*: no code path may CHOOSE a direction at runtime.
+
+    This replaced a blanket source scan for the token ``forward_kl``. That scan
+    forbade the very thing SPEC prescribes -- Sec. 5 Phase 4 requires forward and
+    switched arms to exist as "separate, explicitly named ablation algorithms",
+    which H2 needs -- so it contradicted the spec it was protecting.
+
+    What I2 actually forbids is a *branch*: a fallback the D-TrOPD update can
+    take, which is what inflates student entropy in proportion to the mismatch
+    that triggered it. A separate class you must name explicitly is not a
+    fallback; it cannot be reached by misconfiguration, only by asking for it.
+
+    The replacement is stricter where it counts. A token ban is evaded by
+    renaming (``fwd_kl`` would have passed it); these checks are structural, and
+    the last one below is the one the old scan could not express at all.
+    """
+    banned = ("kl_forward", "use_forward", "switch_kl", "flip_kl")
     offenders = []
     for path in sorted(PACKAGE.glob("*.py")):
         text = path.read_text()
         for token in banned:
             if token in text:
                 offenders.append(f"{path.name}: {token}")
-    assert not offenders, f"forward-KL path leaked back in: {offenders}"
+    assert not offenders, f"forward-KL fallback leaked back in: {offenders}"
+
+    # The forward direction may live in exactly one place: the named ablation.
+    from dtropd.algorithms import (
+        DTrOPD,
+        ForwardKLDistill,
+        NaiveDistill,
+        SnapshotDistillBase,
+    )
+
+    for cls in (DTrOPD, NaiveDistill, SnapshotDistillBase):
+        src = inspect.getsource(cls)
+        # "forward" alone is the neural-net sense (forward pass); the direction
+        # concept is the compound token.
+        assert "forward_kl" not in src.lower(), (
+            f"{cls.__name__} references a forward KL; the method's own path must "
+            "carry exactly one direction (I2)"
+        )
+
+    # Structural: the shared per-neighbour KL puts the STUDENT first. Reverse KL
+    # is KL(student || teacher), and argument order is the whole difference --
+    # a swap here would be invisible to any name-based check.
+    base_src = inspect.getsource(SnapshotDistillBase._per_neighbor_kl)
+    call = base_src[base_src.index("gaussian_kl("):]
+    student_at = call.index("mu,")
+    teacher_at = call.index("state.teacher_mu")
+    assert student_at < teacher_at, (
+        "SnapshotDistillBase._per_neighbor_kl passes the teacher first, i.e. it "
+        "computes FORWARD KL. Invariant I2 requires student-first (reverse)."
+    )
+
+    # The shared per-neighbour KL is student-first, and the ablation overrides it
+    # rather than the base branching on a flag.
+    assert "_per_neighbor_kl" in ForwardKLDistill.__dict__, (
+        "ForwardKLDistill must OVERRIDE the KL, not switch a flag inside the base"
+    )
+
+    # And the ablation is unreachable by configuration: no config value produces
+    # it. Only naming a different algorithm does. This is the property the token
+    # scan could not check, and it is the one that matters.
+    cfg = Config()
+    cfg.distill.enabled = True
+    for direction in ("forward", "switched", "symmetric", "reverse"):
+        cfg.distill.kl_direction = direction
+        try:
+            cfg.distill.validate(eta=cfg.ppo.kl_early_stop)
+        except ConfigError:
+            continue  # refused outright, which is the point
+        assert direction == "reverse", (
+            f"kl_direction={direction!r} was accepted; only 'reverse' may be"
+        )
 
 
 def test_i2_config_rejects_any_other_direction():

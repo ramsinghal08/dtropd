@@ -892,3 +892,81 @@ satisfied (grid derived *and* confirmed); condition 2 was satisfied by
 `h4_scale` and `h5_scale` under D14-AMENDED. The verdict is the **interaction**
 — the predicted sign flip between environments — and whether it survives all
 four grid points. A single positive point is not the result.
+
+---
+
+## 17. H6 verdict and the mechanism experiments — 2026-08-05
+
+### H6 — INCONCLUSIVE PENDING MANIPULATION CHECK
+
+**Explicitly NOT "robust".** 160/160 cells, 10 seeds, full budget, 803.7 min.
+
+| `f` | adaptive / plain sum | adaptive / trimmed mean |
+|---|---|---|
+| 0.0 | -36.21 | -36.21 |
+| 0.5 | -36.08 | -35.92 |
+
+Paired against each aggregator's own `f = 0`, **not one of the 15 attacked arms
+differs from baseline** -- every bootstrap CI spans zero. Plain sum was predicted
+to collapse early and did not move at all.
+
+**Why this is not a confirmation.** Seed sd within a cell is **6.81**; sd between
+conditions is **0.58**. An effect an order of magnitude below the noise it must
+be read against is not evidence of robustness -- a flat curve is equally
+consistent with *"robust aggregation held"* and *"the attack never bit"*, and
+those are opposite conclusions with identical plots.
+
+The D16 endpoint test -- `f = 0` versus `f = 0.5` must separate with
+non-overlapping CIs -- **fails at the full budget**. D16 introduced that test as
+a precondition for a *shortened* budget, on the assumption that the full budget
+was safe. It was not.
+
+**The control arm is what makes this diagnosable.** `sign_flip` at `f = 0.4`
+with plain sum is the most damaged cell the design contains: loudest attack, no
+defence, 40% of neighbours negating their gradients. Against baseline it gives
+**+0.47 [-1.37, +2.40]** -- nothing. If negating 40% of the distillation
+gradients is undetectable in final return, the Byzantine channel is not
+load-bearing, and no aggregation rule can be credited for surviving it. Including
+a positive control that was expected to *fail* is the only reason this is
+distinguishable from success.
+
+**Required before H6 can be given any verdict:** a manipulation check showing the
+social term materially affects the update at the budget used. `beta * L_soc`'s
+gradient share is the quantity (`experiments/social_share.py`), and H2 is the
+experiment.
+
+**The adversary is NOT modified.** It behaves as specified and was verified to
+sit inside the honest range by construction. Changing it now, after seeing a
+flat curve, would be tuning an experimental condition against its own outcome.
+
+### H6 reporting defect (fixed, no re-run)
+
+`sweep_report` groups by `(condition, algo)`, and `h6_byzantine.yaml` gave all
+six `f` arms of an aggregator the same condition -- so the report **pooled the
+`f` axis away**, marginalising out the hypothesis. The published figure showed
+four points with overlapping CIs and looked like a clean null, having never
+asked the question. `experiments/h6_curve.py` regenerates return-vs-`f` with
+paired CIs from the existing manifest. Reporting fix only; no cell was re-run.
+
+### H1 / H2 / H3 — the mechanism experiments, and what they decide about H6
+
+Run by `experiments/run_mechanisms.sh` (55 cells, ~1/12th of H6). Each config
+carries its pre-registered rule and the deciding quantity in its header.
+
+**H2 is the discriminator for H6.** If the social term produces a large clear
+effect there, H6's flatness means the *adversary* is inert. If H2 is weak, the
+social term is immaterial overall -- which explains H6 and predicts a null H7,
+since D-TrOPD differs from IPPO through that term and nothing else.
+
+Two ablations were built for these, both **loud but legal**, on the existing
+precedent that `radius_signal='value_variance'` contradicts I1 and exists solely
+to measure the pathology I1 forbids:
+
+* `forward_kl_distill` -- a **separate named algorithm**, which is what SPEC
+  Sec. 5 Phase 4 requires of forward/switched arms. I2 is untouched: the main
+  path still has no direction branch, and `distill.kl_direction` still refuses
+  anything but `reverse`. The direction is chosen by which class you instantiate.
+* `ppo.degenerate_critic` -- freezes the critic at initialisation, giving H3 the
+  "intentionally degenerate critic" it requires. This contradicts I4 and warns
+  so. `value_coef = 0` was rejected as the mechanism: I4's hard check exists for
+  a reason and softening it to make an experiment runnable is the wrong trade.

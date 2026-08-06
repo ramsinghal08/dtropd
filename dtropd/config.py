@@ -250,7 +250,13 @@ class PPOConfig:
     gae_lambda: float = 0.95
     clip_ratio: float = 0.2
     entropy_coef: float = 0.0
-    value_coef: float = 0.5  # c_V in SPEC Sec. 2.4
+    value_coef: float = 0.5
+    #: H3 ABLATION ONLY. Freezes the critic at initialisation so it carries
+    #: no information -- the "intentionally degenerate critic" SPEC Sec. 6 / H3
+    #: requires. This CONTRADICTS invariant I4 and is loud but legal, exactly as
+    #: radius_signal='value_variance' contradicts I1. Never a default; results
+    #: from it are the counterexample, never D-TrOPD.
+    degenerate_critic: bool = False  # c_V in SPEC Sec. 2.4
     max_grad_norm: float = 0.5
     inner_epochs: int = 4
     num_minibatches: int = 4
@@ -271,6 +277,15 @@ class PPOConfig:
             raise ConfigError(
                 "ppo.value_coef (c_V) must be > 0: the critic loss must be present "
                 "and optimized (invariant I4)"
+            )
+        if self.degenerate_critic:
+            warnings_out.append(
+                "ppo.degenerate_critic=True freezes the critic at initialisation, "
+                "so it is present but NOT optimized -- this contradicts invariant "
+                "I4. It exists only as the H3 ablation arm (SPEC Sec. 6 requires "
+                "an intentionally degenerate critic), exactly as "
+                "radius_signal='value_variance' exists only for I1. Results from "
+                "it are the counterexample and must never be reported as D-TrOPD."
             )
         if not 0.0 < self.clip_ratio < 1.0:
             raise ConfigError("ppo.clip_ratio must lie in (0, 1)")

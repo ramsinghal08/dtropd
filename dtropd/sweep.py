@@ -71,7 +71,16 @@ class SweepError(RuntimeError):
     """Raised when a sweep is structurally invalid and must not be run."""
 
 
-DISTILLERS = ("dtropd", "naive_distill")
+#: Algorithms whose update includes the distillation term, so `distill.enabled`
+#: must be on for them. This drives CONFIGURATION -- forgetting an entry here
+#: silently turns that algorithm into IPPO, which the SnapshotDistillBase
+#: constructor refuses loudly rather than allowing.
+DISTILLERS = ("dtropd", "naive_distill", "forward_kl_distill")
+
+#: Algorithms the D9 consensus-pull cost is REPORTED for. Deliberately narrower
+#: than DISTILLERS: `forward_kl_distill` is an H2 ablation that violates the
+#: single-direction rule by construction, so it belongs in no headline table.
+REPORTED_DISTILLERS = ("dtropd", "naive_distill")
 
 
 # --------------------------------------------------------------------------- #
@@ -657,11 +666,11 @@ def sweep_report(manifest: dict[str, Any], seed: int = 0) -> dict[str, Any]:
     if het and hom:
         # SPEC Sec. 10 / D8: the claim is the sign flip across environments.
         report["h7_interaction"] = h7_interaction(het, hom, seed=seed)
-    if hom.get("ippo") and any(a in hom for a in DISTILLERS):
+    if hom.get("ippo") and any(a in hom for a in REPORTED_DISTILLERS):
         # SPEC Sec. 11 / D9: the floor the heterogeneous benefit must clear.
         report["consensus_pull_cost"] = {
             algo: consensus_pull_cost(hom["ippo"], hom[algo], seed=seed)
-            for algo in DISTILLERS
+            for algo in REPORTED_DISTILLERS
             if algo in hom
         }
 
