@@ -1,17 +1,25 @@
 #!/usr/bin/env bash
 # The three queued follow-ups, in the order they were prioritised.
 #
-# ONE STAGE PER INVOCATION, deliberately. Each stage answers a question that
-# changes what the next one is worth running, so chaining them would spend
-# compute on a question that may already be settled. Run one, report, then run
-# the next.
-#
 #   ./experiments/run_queue.sh manipulation   # 1. H6(b): is the adversary landing?
 #   ./experiments/run_queue.sh valvar         # 2. H3's value-variance arms, kappa fixed
 #   ./experiments/run_queue.sh policy         # 3. H6(c): the policy-level adversary
+#   ./experiments/run_queue.sh all            # all three in order, ~10 h
 #
 #   WORKERS=8 ./experiments/run_queue.sh manipulation
 #   OUT_ROOT=/data/dtropd ./experiments/run_queue.sh policy
+#
+# ONE STAGE PER INVOCATION IS THE DEFAULT, so results can be read before the
+# next stage starts -- but that is a REVIEW cadence, not a compute dependency.
+# No stage's outcome changes whether another is worth running: stage 1 tests the
+# gradient-level adversary, stage 3 tests a different adversary against a
+# different defence (SPEC D19), and stage 2 is unrelated to both. `all` is
+# therefore safe, and is the right choice for an unattended overnight run.
+#
+# `all` DOES NOT STOP ON A FAILED STAGE. A crash three hours in would otherwise
+# waste the rest of the night; each stage is independent, so the remaining ones
+# still run and a summary at the end names anything that failed. Every stage is
+# resumable, so a failed one picks up where it stopped on the next invocation.
 #
 # Run these OUTSIDE the agent container (SPEC D16): that environment only
 # executes while a session is issuing calls, so a multi-hour sweep makes no
@@ -63,8 +71,13 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 STAGE="${1:-}"
-WORKERS="${WORKERS:-4}"
 OUT_ROOT="${OUT_ROOT:-runs}"
+# Default to cores-1 rather than a fixed 4: an overnight run should use the
+# machine. One core is left for the OS so the box stays responsive.
+if [ -z "${WORKERS:-}" ]; then
+  CORES="$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)"
+  WORKERS=$(( CORES > 2 ? CORES - 1 : 1 ))
+fi
 
 if [ -n "${PYTHON:-}" ]; then PY="$PYTHON"
 elif [ -x .venv/bin/python ]; then PY=.venv/bin/python
@@ -72,14 +85,45 @@ elif command -v python3 >/dev/null 2>&1; then PY=python3
 else PY=python
 fi
 
+# --- `all`: every stage in order, in ONE process ------------------------------
+# Sequentially, never concurrently. Three sweeps running at once each want
+# $WORKERS processes, so on an 8-core laptop that is ~24 workers thrashing 8
+# cores -- same total work, worse wall-clock, and three times the peak memory.
+# One at a time with every core is strictly faster.
+if [ "$STAGE" = "all" ]; then
+  failed=()
+  for s in manipulation valvar policy; do
+    echo
+    echo "############################################################"
+    echo "# queue: $s   ($(date))"
+    echo "############################################################"
+    if "$0" "$s"; then :; else
+      echo "!! stage $s exited $? -- continuing; it is resumable" >&2
+      failed+=("$s")
+    fi
+  done
+  echo
+  echo "############################################################"
+  echo "# queue finished ($(date))"
+  if [ ${#failed[@]} -eq 0 ]; then
+    echo "# all three stages completed"
+  else
+    echo "# FAILED: ${failed[*]}   -- re-run those stages; completed cells skip"
+  fi
+  echo "############################################################"
+  [ ${#failed[@]} -eq 0 ]
+  exit $?
+fi
+
 case "$STAGE" in
-  manipulation) NAME=h6_manipulation ; CELLS="40 cells, ~3.7 h at 4 workers" ;;
+  manipulation) NAME=h6_manipulation ; CELLS="40 cells, ~3.7 h at 4 workers"   ;;
   valvar)       NAME=h3_radius       ; CELLS="30 cells of 60; the rest resume-skip" ;;
   policy)       NAME=h6_policy_level ; CELLS="60 cells, ~5.6 h at 4 workers" ;;
   *)
-    echo "usage: $0 {manipulation|valvar|policy}" >&2
+    echo "usage: $0 {manipulation|valvar|policy|all}" >&2
     echo >&2
-    echo "Run ONE stage, report, then run the next. See the header for why." >&2
+    echo "One stage at a time lets each be read before the next starts;" >&2
+    echo "'all' runs the three in order, ~10 h, for an unattended run." >&2
     exit 2
     ;;
 esac
@@ -103,7 +147,7 @@ fi
 $PY run.py sweep --config "$CONFIG" --out "$OUT" --workers "$WORKERS"
 
 echo
-echo "Done: $STAGE. Report before starting the next stage."
+echo "Done: $STAGE. Analysis commands for this stage:"
 case "$STAGE" in
   manipulation)
     echo "  $PY experiments/h6_curve.py --manifest $OUT/manifest.json \\"
