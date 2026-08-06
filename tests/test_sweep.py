@@ -842,3 +842,35 @@ def test_mechanism_configs_log_what_their_hypothesis_decides_on(name):
     assert len(plan.seeds) >= 10, (
         f"{name} has {len(plan.seeds)} seeds; SPEC Sec. 7 requires >= 10"
     )
+
+
+def test_h1_buckets_sort_numerically_not_lexicographically():
+    """H1's criterion is "hard_* spike AT THE LEFT" -- so axis order is the test.
+
+    The original key was ``float(s.split("_")[0]) if s[0].isdigit() else 1e9``.
+    Every label starts with '[', so the guard was always False, every bucket got
+    the same sort key, and the axis came out arbitrary -- with [0.05,0.1) drawn
+    leftmost and [0,0.005) fourth. The stated criterion could not be evaluated
+    against the figure at all.
+    """
+    from dtropd.hypothesis_figures import _bucket_lower
+
+    shuffled = ["[0.1,inf)", "[0.02,0.05)", "[0,0.005)", "[0.005,0.01)", "[0.05,0.1)"]
+    assert sorted(shuffled, key=_bucket_lower) == [
+        "[0,0.005)", "[0.005,0.01)", "[0.02,0.05)", "[0.05,0.1)", "[0.1,inf)",
+    ]
+    assert _bucket_lower("[0,0.005)") == 0.0
+    assert _bucket_lower("[0.1,inf)") == 0.1
+    assert _bucket_lower("garbage") == float("inf")
+
+
+def test_boundary_crossing_rate_distinguishes_untestable_from_refuted():
+    """No sign flips has two causes, and only one of them refutes H1.
+
+    If edges never cross delta_i, a switched gate never switches and H1 is
+    UNTESTABLE at that horizon. That looks identical to "the gate is smooth" on
+    the sign-flip plot, so the crossing rate is what separates them.
+    """
+    from dtropd.hypothesis_figures import boundary_crossing_rate
+
+    assert boundary_crossing_rate({"runs": []})["_verdict"] == "NO DATA"

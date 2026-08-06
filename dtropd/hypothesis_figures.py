@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -43,7 +44,14 @@ import numpy as np
 from .analysis import bootstrap_ci
 from .utils import get_logger, read_metrics
 
-__all__ = ["HYPOTHESIS_FIGURES", "figure_for_sweep", "h1_figure", "h2_figure", "h3_figure"]
+__all__ = [
+    "HYPOTHESIS_FIGURES",
+    "figure_for_sweep",
+    "boundary_crossing_rate",
+    "h1_figure",
+    "h2_figure",
+    "h3_figure",
+]
 
 logger = get_logger("dtropd.hypothesis_figures")
 
@@ -75,6 +83,66 @@ def _mpl():
 # --------------------------------------------------------------------------- #
 
 
+def _bucket_lower(label: str) -> float:
+    """Numeric lower edge of a bucket label like ``[0.005,0.01)``.
+
+    The previous key was ``float(s.split("_")[0]) if s[0].isdigit() else 1e9``.
+    Every label starts with ``[``, so ``s[0].isdigit()`` was always False and
+    EVERY bucket sorted to the same key -- leaving the x-axis in arbitrary order,
+    with ``[0.05,0.1)`` drawn leftmost. H1's criterion is "hard_* spike AT THE
+    LEFT", i.e. nearest the boundary, so the axis order is not cosmetic: the
+    stated test could not be evaluated against the plot at all.
+    """
+    match = re.match(r"^[\[(]\s*([-\d.eE+]+)", label.strip())
+    return float(match.group(1)) if match else float("inf")
+
+
+def boundary_crossing_rate(manifest: dict[str, Any]) -> dict[str, Any]:
+    """How often an edge CROSSES ``delta_i`` between consecutive epochs.
+
+    Chattering requires crossings. If edges sit firmly on one side of the trust
+    boundary for the whole run, a switched gate never switches, and H1 is
+    **untestable at this horizon** rather than refuted -- a distinction the
+    sign-flip plot alone cannot make, because "no flips" looks identical in both
+    cases.
+
+    Computed from stored per-edge rows (``D_ij`` and ``delta_i`` per epoch), so
+    this is re-analysis of existing runs.
+    """
+    out: dict[str, Any] = {}
+    for arm, dirs in _agg(manifest).items():
+        crossings = total = 0
+        for run in dirs:
+            side: dict[tuple[int, int], int] = {}
+            for rec in _records(run):
+                for e in rec.get("edges") or []:
+                    key = (int(e["i"]), int(e["j"]))
+                    now = 1 if e["D_ij"] > e["delta_i"] else -1
+                    if key in side:
+                        total += 1
+                        if now != side[key]:
+                            crossings += 1
+                    side[key] = now
+        out[arm] = {
+            "crossings": crossings,
+            "edge_epoch_transitions": total,
+            "rate": (crossings / total) if total else float("nan"),
+        }
+    rates = [v["rate"] for v in out.values() if v["edge_epoch_transitions"]]
+    out["_verdict"] = (
+        "NO DATA"
+        if not rates
+        else (
+            "H1 UNTESTABLE at this horizon: edges essentially never cross the "
+            "trust boundary, so a switched gate never switches. A null here is "
+            "not evidence against chattering."
+            if max(rates) < 0.01
+            else "crossings occur; the sign-flip contrast is interpretable"
+        )
+    )
+    return out
+
+
 def h1_figure(manifest: dict[str, Any], out_path: Path) -> dict[str, Any]:
     """Sign-flip rate by ``|D_ij - delta_i|`` bucket, one series per mode.
 
@@ -104,10 +172,7 @@ def h1_figure(manifest: dict[str, Any], out_path: Path) -> dict[str, Any]:
     if not per_arm:
         return {"available": False, "reason": "no h1/sign_flips_by_bucket in metrics"}
 
-    labels = sorted(
-        {b for arm in per_arm.values() for b in arm},
-        key=lambda s: float(s.split("_")[0].replace("inf", "1e9")) if s[0].isdigit() else 1e9,
-    )
+    labels = sorted({b for arm in per_arm.values() for b in arm}, key=_bucket_lower)
     plt = _mpl()
     fig, ax = plt.subplots(figsize=(8.5, 5))
     summary: dict[str, Any] = {"available": True, "buckets": labels, "arms": {}}
@@ -134,7 +199,13 @@ def h1_figure(manifest: dict[str, Any], out_path: Path) -> dict[str, Any]:
                  "confirmed if hard_* spike at the left and continuous stays flat")
     ax.grid(alpha=0.3)
     ax.legend(fontsize=9)
-    fig.tight_layout()
+
+    crossings = boundary_crossing_rate(manifest)
+    summary["boundary_crossings"] = crossings
+    verdict = crossings.get("_verdict", "")
+    fig.text(0.5, 0.005, f"boundary-crossing check: {verdict}", ha="center",
+             fontsize=8, color="tab:red" if "UNTESTABLE" in verdict else "black")
+    fig.tight_layout(rect=(0, 0.045, 1, 1))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
