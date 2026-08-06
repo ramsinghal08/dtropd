@@ -1,0 +1,130 @@
+# H6(c) -- POLICY-LEVEL ADVERSARY. The test the trust gate has never had.
+#
+# Added 2026-08-06, AFTER the threat-model distinction was discovered and
+# BEFORE any policy-level run existed. The prediction below is pre-registered:
+# it is written here, in the config, ahead of the outcome (SPEC D19).
+#
+# WHY THIS ARM EXISTS
+# -------------------
+# H6 as originally built uses a GRADIENT-level adversary: it corrupts the
+# per-edge gradient at the aggregation site and broadcasts an honest-looking
+# snapshot. Measured on those logs, the gate does not attenuate Byzantine edges
+# at all (w 0.87074 byzantine vs 0.87193 honest, paired diff -0.0029,
+# 95% CI [-0.0071, +0.0008]). That is not a failure -- w_ij keys on D_ij, the
+# neighbour's BEHAVIOURAL divergence, and a gradient-level adversary never
+# changes its behaviour. The gate is blind to that threat model by construction,
+# so H6 as run tests the AGGREGATORS, which is exactly what Prop. 5 is about.
+#
+# The gate's own threat model is the POLICY-level adversary: an agent that
+# broadcasts a divergent snapshot while acting and learning normally. It has
+# never been run.
+#
+# PRE-REGISTERED PREDICTION
+# -------------------------
+#   1. D_ij on Byzantine edges is markedly ELEVATED over honest edges.
+#   2. w_ij on Byzantine edges COLLAPSES toward zero relative to honest edges.
+#   3. D-TrOPD's honest-agent return degrades less with f than NaiveDistill's.
+# (1) and (2) are the mechanism. (3) is the consequence.
+#
+# HOW MUCH OF THIS IS ARITHMETIC, STATED UP FRONT. Once the offset is fixed,
+# (1) and (2) are close to a calculation: D_ij ~ act_dim * c^2 / (2 sigma^2),
+# and w = exp(-gamma[softplus(D - delta) - softplus(-delta)]) is a known
+# decreasing function of D. A large enough offset makes (2) true by
+# construction. That is worth saying plainly rather than presenting a
+# foregone conclusion as a finding -- what (1) and (2) actually establish is
+# that the wiring is real: the corruption reaches D_ij, the gate responds, and
+# nothing in the implementation short-circuits it. That had never been shown.
+# (3) is the genuinely open question and is the weaker claim: it can fail while
+# the mechanism works, if the social term is not decisive for return at this
+# beta. Failure of (1) or (2) would falsify the gate outright.
+#
+# DESIGN: THE AGGREGATOR IS DELIBERATELY DISABLED
+# -----------------------------------------------
+# aggregation is plain `sum`, not trimmed mean. If a robust aggregator were left
+# on, a null result would be attributable to either defence and the arm would
+# answer nothing. With `sum`, the ONLY thing standing between the lie and the
+# student is w_ij -- so D-TrOPD vs NaiveDistill (w = 1 structurally) isolates
+# the gate and nothing else.
+#
+# SCALE, AND HOW IT WAS CHOSEN. byzantine_scale means something DIFFERENT here
+# than in the gradient arms: a constant offset c added to the broadcast policy's
+# pre-squash mean, not a multiple of the honest gradient spread. The numeral is
+# NOT carried over from the gradient arms.
+#
+# The choice was informed by measurement, and it is recorded that way rather
+# than dressed up as a priori. On a 3-epoch smoke config (8 agents, sigma ~0.61
+# at initialisation) the measured map is:
+#
+#   c      D_ij (byz)   D_ij (honest)   w_ij (byz) at delta=0.1, gamma=1
+#   0.5    0.673        0.00026         0.687
+#   1.0    2.705        0.00026         0.131
+#   1.75   8.301        0.00026         0.00052
+#   3.0    24.42        0.00026         5.2e-11
+#
+# c = 1.0 is taken as the smallest round offset that puts the broadcast mean
+# more than one policy standard deviation from the honest one -- i.e. an
+# unambiguously different policy, by a criterion stated in the policy's own
+# units and not in w's. Larger values would make prediction (2) look more
+# dramatic and are declined for that reason.
+#
+# NOT TESTED HERE, and the informative follow-up: the STEALTH threshold. An
+# adversary offsetting just under delta_i would evade the gate the way
+# `adaptive` evades trimming, and where that threshold sits is a real result in
+# a way that a loud adversary's attenuation is not. Making c the swept axis
+# would answer it; that is a scope change, not a code change, since D_ij is
+# already logged per edge.
+name: h6_policy_level
+notes: >-
+  H6(c). Policy-level Byzantine adversary -- broadcasts a divergent snapshot
+  while behaving normally. Plain-sum aggregation so the trust gate is the only
+  defence in play. D-TrOPD (gated) vs NaiveDistill (w=1) at f in {0, 0.2, 0.5},
+  10 paired seeds. Pre-registered prediction in the config header, dated
+  2026-08-06, written before the first run.
+out_dir: runs/h6_policy_level
+seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+auto_calibrate: true
+
+base:
+  env: {n_agents: 12, n_targets: 3, capture_group_size: 3, capture_radius: 0.3,
+        max_cycles: 50, heterogeneous: true, local_ratio: 0.5,
+        reward_spec_version: v1}
+  network: {hidden_sizes: [64, 64]}
+  ppo: {lr: 1.0e-3, inner_epochs: 4, num_minibatches: 4, kl_early_stop: 0.02}
+  distill:
+    enabled: true
+    beta_max: 0.05
+    warmup_fraction: 0.1
+    kappa: 100.0
+    delta_base: 0.1
+    gamma_attenuation: 1.0
+    attenuation: continuous
+    calibration: warmup
+    calibration_epochs: 8
+    calibration_pool_epochs: 2
+    aggregation: sum          # see DESIGN above -- deliberately not robust
+  instrument:
+    per_edge_gradients: true
+    per_edge_gradient_interval: 5
+    per_edge_detail: true     # w_ij and D_ij per edge: predictions (1) and (2)
+    consensus_pull: true
+    decay_probe: false
+  graph: {topology: complete}
+  stress:
+    byzantine_level: policy
+    byzantine_mode: none      # no gradient attack at this level
+    byzantine_fraction: 0.5
+    byzantine_scale: 1.0      # pre-squash mean offset; see SCALE above
+  train: {algo: dtropd, total_epochs: 150, num_envs: 40, device: cpu,
+          eval_interval: 25, eval_episodes: 16}
+
+arms:
+  - {name: dtropd_f00, algo: dtropd,        condition: gated,
+     overrides: {stress.byzantine_fraction: 0.0}}
+  - {name: dtropd_f20, algo: dtropd,        condition: gated,
+     overrides: {stress.byzantine_fraction: 0.2}}
+  - {name: dtropd_f50, algo: dtropd,        condition: gated}
+  - {name: naive_f00,  algo: naive_distill, condition: ungated,
+     overrides: {stress.byzantine_fraction: 0.0}}
+  - {name: naive_f20,  algo: naive_distill, condition: ungated,
+     overrides: {stress.byzantine_fraction: 0.2}}
+  - {name: naive_f50,  algo: naive_distill, condition: ungated}

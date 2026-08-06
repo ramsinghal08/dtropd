@@ -118,7 +118,44 @@ argument from units rather than from a benchmark — which makes it stronger.
 
 ---
 
-## 5. The trust gate is blind to a gradient-level adversary, by construction
+## 5. Two threat models, two defences: the trust gate and robust aggregation
+   protect against different adversaries
+
+**This is the most transferable finding here, and it is a taxonomy rather than a
+result.** It began as an apparent null in H6 and turned out to be a category
+error in how the experiment was scoped.
+
+### 5a. The distinction
+
+| | **gradient-level** adversary | **policy-level** adversary |
+|---|---|---|
+| what it corrupts | the per-edge gradient, at the aggregation site | the broadcast policy snapshot |
+| what it broadcasts | an honest-looking snapshot | a divergent snapshot |
+| effect on `D_ij` | none — behaviour is unchanged | elevated |
+| effect on `w_ij` | none — **the gate is blind by construction** | should collapse |
+| what defends | robust aggregation (Prop. 5) | the trust gate |
+
+`w_ij` keys on `D_ij`, the *behavioural* divergence of the neighbour's broadcast
+policy. An adversary that never changes its behaviour is invisible to it. This
+is not a weakness in the gate; it is the gate's domain of applicability, and the
+same reasoning says a robust aggregator cannot help against a peer whose
+*policy* has genuinely diverged — trimming operates on gradients that are, in
+that case, faithful reports of a bad teacher.
+
+### 5b. Consequences for the paper
+
+* **Prop. 5 must be scoped explicitly to the gradient-level model.** It is a
+  statement about robust aggregation, and that is the model robust aggregation
+  addresses. Stating it without the scope invites the reading that D-TrOPD's
+  gate contributes to Byzantine tolerance, which the measurement below rules
+  out.
+* **H6 as built is correctly scoped, not inconclusive.** It uses a
+  gradient-level adversary, so it tests the *aggregators* — exactly Prop. 5's
+  subject. Its earlier "inconclusive" label was wrong about what it measured.
+* **A gate-based robustness claim needs a policy-level adversary**, which is a
+  different experiment. It had never been run; see 5d.
+
+### 5c. The measurement
 
 H6's manipulation check, on existing logs (adaptive attack, trimmed mean,
 f = 0.1, 10 seeds x 30 instrumented epochs, 1936 Byzantine edges vs 21296
@@ -132,18 +169,57 @@ honest):
 Paired per-seed difference **-0.0029, 95% CI [-0.0071, +0.0008]** — spans zero.
 The gate does not attenuate Byzantine neighbours at all.
 
-**This is not a failure of the gate; it is a category distinction the paper
-should make explicitly.** `w_ij` keys on `D_ij`, the *behavioural* divergence of
-the neighbour's broadcast policy. A gradient-level adversary corrupts the
-per-edge gradient at the aggregation site and never touches its policy snapshot,
-so its behaviour is indistinguishable and the gate has nothing to key on.
+The gate does not attenuate Byzantine neighbours at all — as 5a says it cannot.
 
-The two defences protect against different things:
+### 5d. The policy-level arm, added afterwards
 
-* the **trust gate** against neighbours whose *policies* have diverged;
-* **robust aggregation** against neighbours whose *gradients* are corrupted.
+A policy-level adversary is implemented in `dtropd/byzantine.py`
+(`corrupt_snapshot`): it offsets the *broadcast* snapshot's pre-squash mean while
+leaving the agent's own actor untouched, so the adversary keeps acting and
+learning normally and only its report is a lie. The arm
+(`experiments/configs/h6_policy_level.yaml`) runs at `f ∈ {0, 0.2, 0.5}`, 10
+paired seeds, D-TrOPD vs NaiveDistill, with **plain-sum aggregation** so that the
+gate is the only defence in play.
 
-H6 as constructed therefore tests the aggregators, and can neither support nor
-undermine any gate-based robustness claim. A gate-based claim needs a
-**policy-level** adversary — one that broadcasts a corrupted snapshot — which is
-a different experiment.
+It was **added 2026-08-06, after the distinction above was found and before any
+policy-level run existed**; the prediction is written into the config header,
+pre-outcome. One caveat is recorded there and is worth repeating: with a large
+enough offset, "`D_ij` rises and `w_ij` collapses" follows from the attenuation
+formula and is close to arithmetic. What the arm establishes is that the wiring
+is real and that nothing short-circuits it — and, on the open question, whether
+the attenuation translates into protected *return*. The genuinely informative
+follow-up is the **stealth threshold**: how close to `delta_i` an adversary can
+sit and still be admitted, the policy-level analogue of what `adaptive` does to
+trimming.
+
+### 5e. An adaptive radius can be widened by the thing it polices
+
+Found while building 5d, and it generalises beyond this algorithm.
+
+`delta_base` is calibrated as a **quantile of the observed `D_ij`
+distribution**. A policy-level adversary's edges sit far out in that
+distribution, so an adversary present during calibration **widens the very
+radius meant to exclude it**. Measured on a smoke config containing only
+`f = 0.5` arms: `delta_base` `0.1 → 1.2545`, `gamma` `1 → 0.472` — the gate
+largely calibrated itself away before training began.
+
+Any scheme that fits a threshold to the distribution it is meant to police has
+this exposure. The mitigation used here is to measure the calibration on an
+unattacked arm, which is only available because the sweep contains one.
+
+---
+
+## 6. Proposition 4's bound holds with about two orders of magnitude to spare
+
+`beta / beta_max` measured across training on the calibrated heterogeneous cell:
+**median 0.0063, worst case 0.0106**. The operating point sits roughly 100×
+inside the bound.
+
+The margin matters more than the compliance. `beta_max` depends on `F_max`,
+which is estimated rather than known, and an estimate of a maximum over an
+unbounded state space is the kind of quantity that can be wrong by a large
+factor. A **100× error in `F_max` would still leave the run inside the bound**,
+so the guarantee does not rest on the estimate being tight.
+
+This is the third confirmed mechanism result, alongside Prop. 3 and the
+invariance half of Remark 2.

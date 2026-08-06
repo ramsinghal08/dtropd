@@ -117,6 +117,12 @@ def train(
         batch_size_per_agent=cfg.batch_size,
         neighbors=algo.neighbors,
         actor_snapshot_bytes=algo.snapshot_bytes,
+        # Who was actually Byzantine, recorded rather than left to be recomputed.
+        # Any analysis that splits edges by attacker has to know the set exactly;
+        # re-deriving it downstream from (seed, fraction) works only for as long
+        # as nobody changes how it is drawn, and a mislabelled split fails
+        # silently in the direction of "no effect found".
+        byzantine=list(getattr(algo, "byzantine", [])),
     )
     writer = MetricsWriter(run_dir, metadata)
 

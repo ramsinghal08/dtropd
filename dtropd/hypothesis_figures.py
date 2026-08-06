@@ -25,7 +25,9 @@ H2   student ``sigma_i`` on high-``D_ij`` edges, reverse vs forward KL, against
 H3   ``delta_i`` under a degenerate critic and under a 10x reward rescale, for
      both radius signals. The claim is INVARIANCE for nonstationarity and
      non-invariance for value-variance.
-H6   final return vs Byzantine fraction ``f`` (see ``experiments/h6_curve.py``).
+H6   the GATE'S response: ``w_ij`` and ``D_ij`` on Byzantine vs honest edges,
+     paired by seed. Return vs ``f`` is a separate, weaker plot
+     (``experiments/h6_curve.py``) -- a defence can work while return stays flat.
 H7   final return -- the one hypothesis whose outcome variable it is.
 ===  ==========================================================================
 """
@@ -51,6 +53,8 @@ __all__ = [
     "h1_figure",
     "h2_figure",
     "h3_figure",
+    "h6_figure",
+    "h6_gate_split",
 ]
 
 logger = get_logger("dtropd.hypothesis_figures")
@@ -437,6 +441,115 @@ def h3_figure(manifest: dict[str, Any], out_path: Path) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
+# H6 -- does the gate attenuate Byzantine neighbours? (SPEC D19)
+# --------------------------------------------------------------------------- #
+
+
+def h6_gate_split(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Per-arm, per-seed ``w_ij`` and ``D_ij`` split by Byzantine vs honest edge.
+
+    The gate's claim is about ``w_ij``, so this is the quantity, and the split is
+    made per seed and then PAIRED: seed-to-seed variation here is an order of
+    magnitude larger than the between-condition difference, so an unpaired
+    comparison buries the effect in seed noise.
+
+    Reads the Byzantine set the run RECORDED. Runs written before that field
+    existed contribute nothing rather than being re-derived here -- a mislabelled
+    split fails silently, in the direction of "no effect found".
+    """
+    out: dict[str, dict[str, Any]] = {}
+    for arm, dirs in _agg(manifest).items():
+        per_seed: list[dict[str, float]] = []
+        level = None
+        for run in dirs:
+            meta_path = run / "metadata.json"
+            if not meta_path.exists():
+                continue
+            meta = json.loads(meta_path.read_text())
+            byz = set(meta.get("byzantine") or [])
+            level = ((meta.get("config") or {}).get("stress") or {}).get("byzantine_level")
+            if not byz:
+                continue
+            acc: dict[tuple[str, bool], list[float]] = defaultdict(list)
+            for rec in _records(run):
+                for row in rec.get("edges") or []:
+                    if "w_ij" not in row:
+                        continue  # ungated algorithm: nothing to split
+                    for field in ("D_ij", "w_ij"):
+                        acc[(field, row["j"] in byz)].append(float(row[field]))
+            if not acc[("w_ij", True)] or not acc[("w_ij", False)]:
+                continue
+            per_seed.append(
+                {
+                    f"{field}_{'byz' if b else 'honest'}": float(np.mean(acc[(field, b)]))
+                    for field in ("D_ij", "w_ij")
+                    for b in (True, False)
+                }
+            )
+        if per_seed:
+            out[arm] = {"byzantine_level": level, "per_seed": per_seed}
+    return out
+
+
+def h6_figure(manifest: dict[str, Any], out_path: Path) -> dict[str, Any]:
+    """H6's mechanism panel. **Final return is not this figure's subject.**
+
+    Return vs ``f`` is the separate ``experiments/h6_curve.py`` plot, and it is
+    the weaker of the two: an aggregator or a gate can work while the return
+    curve stays flat, if the social term is not decisive at this ``beta``.
+    """
+    split = h6_gate_split(manifest)
+    if not split:
+        return {
+            "available": False,
+            "reason": "no gated arm with a recorded Byzantine set and per-edge detail",
+        }
+
+    plt = _mpl()
+    arms = sorted(split)
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+    summary: dict[str, Any] = {}
+    for ax, field, label in zip(axes, ("D_ij", "w_ij"), (r"$D_{ij}$", r"$w_{ij}$")):
+        for x, arm in enumerate(arms):
+            rows = split[arm]["per_seed"]
+            b = [r[f"{field}_byz"] for r in rows]
+            h = [r[f"{field}_honest"] for r in rows]
+            for bi, hi in zip(b, h):  # one faint line per seed: the pairing
+                ax.plot([x - 0.12, x + 0.12], [hi, bi], "-", color="0.75", lw=0.8, zorder=1)
+            ax.plot([x - 0.12] * len(h), h, "o", color="tab:blue", ms=5, zorder=2,
+                    label="honest edges" if x == 0 else None)
+            ax.plot([x + 0.12] * len(b), b, "o", color="tab:red", ms=5, zorder=2,
+                    label="Byzantine edges" if x == 0 else None)
+            diffs = [bi - hi for bi, hi in zip(b, h)]
+            summary.setdefault(arm, {})[field] = {
+                "byzantine_mean": float(np.mean(b)),
+                "honest_mean": float(np.mean(h)),
+                "paired_diff_mean": float(np.mean(diffs)),
+                "paired_diff_ci": bootstrap_ci(diffs) if len(diffs) > 1 else {},
+                "seeds": len(diffs),
+            }
+        ax.set_xticks(range(len(arms)))
+        ax.set_xticklabels(arms, rotation=25, ha="right", fontsize=8)
+        ax.set_ylabel(label)
+        ax.set_title(f"H6: {label} on Byzantine vs honest edges (paired by seed)")
+        ax.grid(alpha=0.3, axis="y")
+        ax.legend(fontsize=8)
+
+    levels = {v.get("byzantine_level") for v in split.values()}
+    fig.suptitle(
+        "H6 decides on the GATE'S response, not on return. Threat level: "
+        f"{', '.join(sorted(str(x) for x in levels))} — the gate is blind to a "
+        "gradient-level adversary by construction (SPEC D19).",
+        fontsize=10,
+    )
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+    return {"available": True, "per_arm": summary}
+
+
+# --------------------------------------------------------------------------- #
 # Dispatch
 # --------------------------------------------------------------------------- #
 
@@ -446,6 +559,7 @@ HYPOTHESIS_FIGURES = {
     "h1": (h1_figure, "h1_sign_flips.png"),
     "h2": (h2_figure, "h2_sigma.png"),
     "h3": (h3_figure, "h3_delta.png"),
+    "h6": (h6_figure, "h6_gate_split.png"),
 }
 
 #: The only hypothesis whose decision quantity IS final return.

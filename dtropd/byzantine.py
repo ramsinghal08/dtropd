@@ -43,6 +43,8 @@ that point the attack has left the honest range and is merely a noisier
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import torch
 from torch import Tensor
@@ -52,7 +54,9 @@ from .utils import derive_seed
 __all__ = [
     "byzantine_agents",
     "apply_attack",
+    "corrupt_snapshot",
     "ATTACKS",
+    "BYZANTINE_LEVELS",
 ]
 
 ATTACKS = ("none", "sign_flip", "gaussian", "adaptive")
@@ -141,3 +145,54 @@ def apply_attack(
     direction[direction == 0] = 1.0
     out[rows] = (mean + direction * scale * std).unsqueeze(0).expand(len(rows), -1)
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Policy-level adversary -- the threat the trust gate was designed for
+# --------------------------------------------------------------------------- #
+
+#: Where the corruption is injected. These are DIFFERENT THREAT MODELS, not
+#: intensities of one (SPEC Sec. 19 / D19):
+#:
+#:   "gradient" -- broadcasts an HONEST-looking snapshot and corrupts the
+#:                 distillation direction at aggregation. ``D_ij`` is unchanged,
+#:                 so ``w_ij`` is unchanged: the trust gate is BLIND to it by
+#:                 construction, and only a robust aggregator can defend.
+#:   "policy"   -- broadcasts a DIVERGENT snapshot while behaving normally
+#:                 itself. ``D_ij`` is elevated, so ``w_ij`` should collapse:
+#:                 this is what the gate exists for.
+BYZANTINE_LEVELS = ("gradient", "policy")
+
+
+def corrupt_snapshot(actor: Any, scale: float) -> None:
+    """Make a broadcast snapshot deliberately divergent, IN PLACE.
+
+    Applies a constant offset to the mean head, which inflates ``D_ij`` through
+    the ``(mu_i - mu_j)^2`` term of the Gaussian KL -- the most direct way to
+    produce a peer that *behaves* differently, which is exactly what the trust
+    gate keys on.
+
+    ``scale`` is signed: the caller fixes the direction once per Byzantine agent
+    per run, so the broadcast policy is *consistently* divergent. A direction
+    redrawn every epoch would be a different adversary -- a flapping one, whose
+    successive lies partly cancel in the aggregate -- and would understate the
+    attack.
+
+    Only the SNAPSHOT is corrupted. The Byzantine agent's own actor is untouched,
+    so it continues to act normally and its own learning is unaffected; what it
+    *broadcasts* is a lie. That separation is what makes this a policy-level
+    adversary rather than a broken agent.
+    """
+    layers = [m for m in actor.net.modules() if isinstance(m, torch.nn.Linear)]
+    if not layers:
+        raise ValueError("actor has no Linear layers to corrupt")
+    head = layers[-1]
+    act_dim = int(actor.act_dim)
+    if head.bias is None or head.bias.numel() < act_dim:
+        raise ValueError(
+            "the actor's output layer has no bias wide enough to hold the mean "
+            "head; the policy-level corruption has nothing to offset"
+        )
+    with torch.no_grad():
+        # Offset the mean head only; leave any state-dependent log-std outputs.
+        head.bias[:act_dim] += scale

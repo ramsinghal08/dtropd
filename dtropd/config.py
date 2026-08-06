@@ -648,8 +648,21 @@ class StressConfig:
     #:              range"). Perturbs by a fraction of the honest coordinate-wise
     #:              spread, chosen to survive trimming.
     byzantine_mode: str = "none"
-    #: Attack magnitude. For `adaptive` this is in units of the honest
-    #: coordinate-wise standard deviation, so < 1 keeps it inside the range.
+    #: WHERE the corruption is injected -- a different THREAT MODEL, not an
+    #: intensity (SPEC Sec. 19 / D19). "gradient": honest-looking snapshot,
+    #: corrupted distillation direction; the gate is blind and only the
+    #: aggregator can defend. "policy": divergent broadcast snapshot; D_ij rises
+    #: and the gate should collapse w_ij. The gate has only ever been tested
+    #: against the model it is blind to.
+    byzantine_level: str = "gradient"
+    #: Attack magnitude. THE UNITS DEPEND ON byzantine_level, because the two
+    #: levels corrupt different objects:
+    #:   gradient/adaptive -- honest coordinate-wise standard deviations, so < 1
+    #:                        keeps the attack inside the honest range;
+    #:   policy            -- a constant offset added to the broadcast policy's
+    #:                        pre-squash mean, in nats-equivalent action units.
+    #: A number that is mild under one reading is extreme under the other, so a
+    #: scale must never be carried across a level change without re-deriving it.
     byzantine_scale: float = 0.5
     #: None -> derived from the master seed, so the Byzantine set is fixed per
     #: run but not identical across seeds.
@@ -667,6 +680,7 @@ class StressConfig:
     motor_failure_resample: bool = False
 
     _BYZANTINE_MODES = ("none", "sign_flip", "gaussian", "adaptive")
+    _BYZANTINE_LEVELS = ("gradient", "policy")
 
     @property
     def active(self) -> bool:
@@ -679,7 +693,16 @@ class StressConfig:
 
     @property
     def byzantine_agents_enabled(self) -> bool:
-        return self.byzantine_mode != "none" and self.byzantine_fraction > 0.0
+        """Whether a Byzantine set exists at all.
+
+        ``byzantine_mode`` names a *gradient* attack, so it gates enablement only
+        at the gradient level. A policy-level adversary corrupts the broadcast
+        snapshot instead and has no gradient mode; requiring one there would
+        force every policy-level config to declare an attack it does not run.
+        """
+        if self.byzantine_fraction <= 0.0:
+            return False
+        return self.byzantine_level == "policy" or self.byzantine_mode != "none"
 
     def n_byzantine(self, n_agents: int) -> int:
         """How many agents are Byzantine, rounded down.
@@ -696,6 +719,10 @@ class StressConfig:
 
     def validate(self, n_agents: int) -> list[str]:
         out: list[str] = []
+        if self.byzantine_level not in self._BYZANTINE_LEVELS:
+            raise ConfigError(
+                f"stress.byzantine_level must be one of {self._BYZANTINE_LEVELS}"
+            )
         if self.byzantine_mode not in self._BYZANTINE_MODES:
             raise ConfigError(
                 f"stress.byzantine_mode must be one of {self._BYZANTINE_MODES}"
@@ -709,11 +736,28 @@ class StressConfig:
         if self.byzantine_scale < 0.0:
             raise ConfigError("stress.byzantine_scale must be >= 0")
 
-        if self.byzantine_fraction > 0.0 and self.byzantine_mode == "none":
+        if (
+            self.byzantine_fraction > 0.0
+            and self.byzantine_mode == "none"
+            and self.byzantine_level != "policy"
+        ):
             out.append(
                 f"byzantine_fraction={self.byzantine_fraction} but byzantine_mode "
                 "is 'none', so no attack runs. This cell would be reported as a "
                 "Byzantine condition while being the unstressed baseline."
+            )
+        if self.byzantine_level == "policy" and self.byzantine_mode != "none":
+            out.append(
+                f"byzantine_level='policy' with byzantine_mode="
+                f"{self.byzantine_mode!r}: the gradient attack is NOT applied at "
+                "the policy level, so this cell runs the snapshot corruption "
+                "alone. Set byzantine_mode='none' so the config says what runs."
+            )
+        if self.byzantine_level == "policy" and self.byzantine_scale == 0.0:
+            out.append(
+                "byzantine_level='policy' with byzantine_scale=0: the broadcast "
+                "snapshot is offset by nothing, so the 'Byzantine' agents are "
+                "honest and this is the f=0 baseline under a different label."
             )
         if self.byzantine_agents_enabled and self.n_byzantine(n_agents) == 0:
             out.append(
@@ -721,7 +765,11 @@ class StressConfig:
                 "rounds down to 0 Byzantine agents; this cell is the f=0 baseline "
                 "under a different label."
             )
-        if self.byzantine_mode == "adaptive" and self.byzantine_scale > 1.0:
+        if (
+            self.byzantine_mode == "adaptive"
+            and self.byzantine_level == "gradient"
+            and self.byzantine_scale > 1.0
+        ):
             out.append(
                 f"byzantine_scale={self.byzantine_scale} exceeds one honest "
                 "standard deviation, so the 'adaptive' adversary leaves the "

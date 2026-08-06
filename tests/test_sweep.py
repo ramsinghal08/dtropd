@@ -815,12 +815,38 @@ def test_only_h7_uses_final_return_as_its_outcome():
         "final return is the decision quantity for H7 alone; adding another "
         "hypothesis here needs a reason recorded in SPEC Sec. 6"
     )
-    for prefix in ("h1", "h2", "h3"):
+    for prefix in ("h1", "h2", "h3", "h6"):
         assert prefix in HYPOTHESIS_FIGURES, (
             f"{prefix} has no hypothesis figure, so it would fall back to the "
             "return plot -- the exact defect this registry removes"
         )
         assert prefix not in RETURN_IS_THE_OUTCOME
+
+
+@pytest.mark.parametrize(
+    "sweep_name", ["h6_byzantine", "h6_manipulation", "h6_policy_level"]
+)
+def test_every_h6_sweep_resolves_to_the_gate_figure(sweep_name):
+    """H6 decides on the gate's response to Byzantine edges, not on return.
+
+    The registry matches by name PREFIX, so this is really a test that no H6
+    sweep gets named in a way that falls through to the return plot.
+    """
+    from dtropd.hypothesis_figures import HYPOTHESIS_FIGURES, h6_figure
+
+    matched = [fn for p, (fn, _) in HYPOTHESIS_FIGURES.items() if sweep_name.startswith(p)]
+    assert matched == [h6_figure], f"{sweep_name} resolves to {matched}"
+
+
+def test_the_policy_level_arm_logs_what_its_prediction_needs():
+    """Its predictions are about `D_ij` and `w_ij` per edge. Discovering they
+    were not logged after a 5-hour sweep is how the same run gets done twice."""
+    plan = load_sweep_config(CONFIGS / "h6_policy_level.yaml")
+    assert plan.base.instrument.per_edge_detail
+    assert plan.base.stress.byzantine_level == "policy"
+    assert plan.base.distill.aggregation == "sum", (
+        "a robust aggregator would leave a null attributable to either defence"
+    )
 
 
 @pytest.mark.parametrize("name", ["h1_chattering", "h2_kl_direction", "h3_radius"])
@@ -926,3 +952,45 @@ def test_kappa_eta_rule_is_not_applied_to_a_non_kl_signal():
         DistillConfig(radius_signal="nonstationarity", kappa=0.636, enabled=True).validate(
             eta=0.02, strict=True
         )
+
+
+# --------------------------------------------------------------------------- #
+# The adversary must not calibrate its own trust radius (SPEC D19)
+# --------------------------------------------------------------------------- #
+
+
+def _cal_template(plan: SweepPlan) -> str:
+    """Which arm ensure_calibrations would measure on."""
+    candidates = [a for a in plan.arms if a.algo == "dtropd"]
+    clean = [a for a in candidates if not a.config(plan.base).stress.active]
+    return (clean[0] if clean else candidates[0]).name
+
+
+def test_the_shared_calibration_is_measured_on_an_unattacked_arm():
+    """`delta_base` is a quantile of the observed `D_ij` distribution.
+
+    A policy-level adversary's edges sit far out in that distribution, so
+    calibrating with one active widens the very radius meant to exclude it --
+    measured on a smoke config at f=0.5, `delta_base` went 0.1 -> 1.2545, i.e.
+    the gate largely calibrated itself away. Arm ORDER decides this, which is
+    exactly the kind of dependency that survives a rename and breaks silently.
+    """
+    for name in ("h6_policy_level", "h6_manipulation", "h6_byzantine"):
+        plan = load_sweep_config(CONFIGS / f"{name}.yaml")
+        chosen = _cal_template(plan)
+        cfg = next(a for a in plan.arms if a.name == chosen).config(plan.base)
+        assert not cfg.stress.active, (
+            f"{name}: the shared calibration would be measured on {chosen!r}, "
+            "which has an active stressor -- the adversary would set its own "
+            "trust radius"
+        )
+
+
+def test_an_all_stressed_sweep_falls_back_rather_than_failing():
+    """Refusing outright would block a legitimate all-attacked sweep. The
+    fallback is allowed; `ensure_calibrations` logs what it had to do."""
+    plan = load_sweep_config(CONFIGS / "h6_policy_level.yaml")
+    plan.arms = [a for a in plan.arms if not a.name.endswith("f00")]
+    chosen = _cal_template(plan)
+    cfg = next(a for a in plan.arms if a.name == chosen).config(plan.base)
+    assert cfg.train.algo == "dtropd" and cfg.stress.active

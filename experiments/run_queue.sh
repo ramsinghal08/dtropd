@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# The three queued follow-ups, in the order they were prioritised.
+#
+# ONE STAGE PER INVOCATION, deliberately. Each stage answers a question that
+# changes what the next one is worth running, so chaining them would spend
+# compute on a question that may already be settled. Run one, report, then run
+# the next.
+#
+#   ./experiments/run_queue.sh manipulation   # 1. H6(b): is the adversary landing?
+#   ./experiments/run_queue.sh valvar         # 2. H3's value-variance arms, kappa fixed
+#   ./experiments/run_queue.sh policy         # 3. H6(c): the policy-level adversary
+#
+#   WORKERS=8 ./experiments/run_queue.sh manipulation
+#   OUT_ROOT=/data/dtropd ./experiments/run_queue.sh policy
+#
+# Run these OUTSIDE the agent container (SPEC D16): that environment only
+# executes while a session is issuing calls, so a multi-hour sweep makes no
+# progress between turns.
+#
+# RESUMABLE. Re-running the same command skips completed cells by config
+# fingerprint. This is load-bearing for stage 2 -- see below.
+#
+# ---------------------------------------------------------------------------
+# 1. manipulation -- h6_manipulation.yaml, 40 cells, ~3.7 h at 4 workers
+# ---------------------------------------------------------------------------
+# NaiveDistill (w = 1, ungated) vs D-TrOPD at f = 0.5 under the SAME adaptive
+# adversary, unchanged. The discriminator for H6's flat curve:
+#   * NaiveDistill collapses, D-TrOPD does not -> something in D-TrOPD confers
+#     the robustness. Not the gate (it is blind to this threat model, D19), so
+#     the aggregator or the KL early-stop absorbing the corrupted step.
+#   * Neither moves -> the adversary is not landing and H6 is uninterpretable
+#     as run.
+# Highest-value item in the queue: it is the only one that can retire H6's open
+# question.
+#
+# ---------------------------------------------------------------------------
+# 2. valvar -- h3_radius.yaml, 3 arms x 10 seeds re-run, ~0.6 h at 4 workers
+# ---------------------------------------------------------------------------
+# The kappa fix (SPEC D18). kappa = 100 was derived for a KL-valued signal and
+# pinned every value-variance arm at delta ~ 1e-141, so those arms could not
+# express their prediction at all. kappa_valvar = 0.636, derived ONCE on the 1x
+# healthy arm and pinned across all three.
+#
+# THE WHOLE CONFIG IS RE-RUN, and only the three valvar arms actually execute:
+# their fingerprint changed with kappa, the three nonstationarity arms' did not.
+# That is the resume path doing the selection, which is safer than hand-picking
+# arms -- if the nonstat arms HAD changed, silently skipping them would be wrong.
+# Requires the existing runs/h3_radius directory; without it, all 60 cells run.
+#
+# ---------------------------------------------------------------------------
+# 3. policy -- h6_policy_level.yaml, 60 cells, ~5.6 h at 4 workers
+# ---------------------------------------------------------------------------
+# The policy-level adversary (SPEC D19): broadcasts a divergent snapshot while
+# acting normally. The threat the trust gate was designed for, and it has never
+# been run. Plain-sum aggregation so the gate is the only defence in play.
+# Pre-registered prediction is in the config header, dated, written before the
+# first run.
+#
+# Outranks stage 2 if compute is tight.
+# ---------------------------------------------------------------------------
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+STAGE="${1:-}"
+WORKERS="${WORKERS:-4}"
+OUT_ROOT="${OUT_ROOT:-runs}"
+
+if [ -n "${PYTHON:-}" ]; then PY="$PYTHON"
+elif [ -x .venv/bin/python ]; then PY=.venv/bin/python
+elif command -v python3 >/dev/null 2>&1; then PY=python3
+else PY=python
+fi
+
+case "$STAGE" in
+  manipulation) NAME=h6_manipulation ; CELLS="40 cells, ~3.7 h at 4 workers" ;;
+  valvar)       NAME=h3_radius       ; CELLS="30 cells of 60; the rest resume-skip" ;;
+  policy)       NAME=h6_policy_level ; CELLS="60 cells, ~5.6 h at 4 workers" ;;
+  *)
+    echo "usage: $0 {manipulation|valvar|policy}" >&2
+    echo >&2
+    echo "Run ONE stage, report, then run the next. See the header for why." >&2
+    exit 2
+    ;;
+esac
+
+CONFIG="experiments/configs/${NAME}.yaml"
+OUT="${OUT_ROOT}/${NAME}"
+
+echo "queue stage: $STAGE"
+echo "  config : $CONFIG"
+echo "  out    : $OUT"
+echo "  workers: $WORKERS"
+echo "  size   : $CELLS   (resumable, safe to re-run)"
+echo
+
+if [ "$STAGE" = "valvar" ] && [ ! -f "$OUT/manifest.json" ]; then
+  echo "NOTE: no existing $OUT -- the three nonstationarity arms have nothing to"
+  echo "      resume from and will run too (60 cells rather than 30)."
+  echo
+fi
+
+$PY run.py sweep --config "$CONFIG" --out "$OUT" --workers "$WORKERS"
+
+echo
+echo "Done: $STAGE. Report before starting the next stage."
+case "$STAGE" in
+  manipulation)
+    echo "  $PY experiments/h6_curve.py --manifest $OUT/manifest.json \\"
+    echo "      --out $OUT/figures/h6b_curve.png --json-out $OUT/h6b_curve.json"
+    echo "  -> paired return vs f, per algorithm. The comparison that matters is"
+    echo "     each algorithm against ITS OWN f=0, not against the other."
+    echo "  $PY experiments/gate_split.py $OUT/runs/*/"
+    echo "  -> confirms on THESE runs that the gate is still blind at the"
+    echo "     gradient level; NaiveDistill logs no w_ij and is skipped, which is"
+    echo "     itself the control's sanity check."
+    ;;
+  valvar)
+    echo "  $PY experiments/analyze_hypotheses.py --run $OUT/runs/<cell> --require h3"
+    echo "  -> delta must now be nonzero in the valvar arms. If it is still ~0 the"
+    echo "     kappa fix did not take and nothing downstream is interpretable."
+    ;;
+  policy)
+    echo "  $PY experiments/gate_split.py $OUT/runs/*/ --out $OUT/gate_split.json"
+    echo "  -> D_ij and w_ij split by Byzantine vs honest edge, paired per seed."
+    echo "     Predictions (1) and (2) live THERE, not in final return."
+    echo "  $PY experiments/h6_curve.py --manifest $OUT/manifest.json \\"
+    echo "      --out $OUT/figures/h6c_curve.png --json-out $OUT/h6c_curve.json"
+    echo "  -> prediction (3), the return curve, and the weakest of the three."
+    ;;
+esac

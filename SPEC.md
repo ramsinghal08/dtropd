@@ -899,6 +899,13 @@ four grid points. A single positive point is not the result.
 
 ### H6 — INCONCLUSIVE PENDING MANIPULATION CHECK
 
+> **Scope corrected by D19 (Sec. 19), 2026-08-06.** What follows stands as
+> written, but "inconclusive" was the wrong label for *scope*: H6 runs a
+> gradient-level adversary and therefore tests the **aggregators**, which is
+> precisely Prop. 5's subject. It is correctly scoped, and it can neither
+> support nor undermine a claim about the trust gate. The open question below —
+> whether the adversary bit at all — is unaffected.
+
 **Explicitly NOT "robust".** 160/160 cells, 10 seeds, full budget, 803.7 min.
 
 | `f` | adaptive / plain sum | adaptive / trimmed mean |
@@ -1032,3 +1039,91 @@ partly measures the normaliser.
 authoritative**; EV is a secondary signal and can be actively misleading. EV
 remains logged and I4's requirement that the critic be optimized is unchanged --
 what changes is which instrument settles the question.
+
+---
+
+## 19. Threat models — 2026-08-06
+
+### D19 — A Byzantine agent has a LEVEL, and the two levels are different threats
+
+`stress.byzantine_level` selects **where** the corruption is injected. This is a
+threat model, not an intensity, and the two are not comparable points on one
+axis.
+
+| | `gradient` (the original) | `policy` (added here) |
+|---|---|---|
+| corrupts | the per-edge gradient, at the aggregation site | the broadcast policy snapshot |
+| broadcasts | an honest-looking snapshot | a divergent snapshot |
+| `D_ij` | unchanged | elevated |
+| `w_ij` | unchanged — **the gate is blind by construction** | should collapse |
+| defended by | robust aggregation (Prop. 5) | the trust gate |
+| `byzantine_scale` units | honest gradient standard deviations | pre-squash mean offset |
+
+`byzantine_scale` means different things at the two levels, so **a scale must
+never be carried across a level change without being re-derived**. Config
+validation warns when a `policy` arm also names a gradient `byzantine_mode`,
+because the gradient attack is not applied there and the config would otherwise
+declare an attack it does not run.
+
+**H6's scope is corrected, not its result.** H6 was run at the `gradient` level
+and was earlier labelled *inconclusive*. That label was wrong about what the
+experiment measured. A gradient-level adversary is behaviourally invisible, so
+the gate cannot respond to it — measured, on H6's own logs: Byzantine vs honest
+`w_ij` 0.87074 vs 0.87193, paired difference **-0.0029, 95% CI [-0.0071,
++0.0008]**. H6 therefore tests the **aggregators**, which is exactly Prop. 5's
+subject, and is **correctly scoped to Prop. 5**. The open question about the
+adversary biting at all (Sec. 17) is unchanged and is still what the
+manipulation check answers.
+
+**Consequence for the paper: Prop. 5 must be scoped explicitly to the
+gradient-level model.** Left unscoped it invites the reading that D-TrOPD's gate
+contributes to Byzantine tolerance, which the measurement above rules out.
+
+### The policy-level arm — added after the distinction was found, pre-outcome
+
+`experiments/configs/h6_policy_level.yaml`, **added 2026-08-06**, after the
+threat-model distinction above was discovered and **before any policy-level run
+existed**. This is recorded plainly because the arm is favourable to D-TrOPD by
+design — it is the one adversary the gate is built for — and an arm added late
+in a project's life needs its provenance visible.
+
+* `f ∈ {0, 0.2, 0.5}`, 10 paired seeds, D-TrOPD vs NaiveDistill (`w = 1`), 60
+  cells.
+* **Plain-sum aggregation, deliberately.** With a robust aggregator left on, a
+  null would be attributable to either defence and the arm would answer nothing.
+* The prediction is written in the config header, dated, pre-outcome.
+* The adversary corrupts the **snapshot only**; `agents[j].actor` is untouched,
+  so it acts and learns normally. `_rebuild_broadcast` keeps what an agent *is*
+  separate from what it *sends*, so the adversary's own radius and
+  nonstationarity signal stay honest. Corrupting `snapshots[j]` directly would
+  model a broken agent, not an adversary.
+
+### A calibration attack surface, found while building the arm
+
+`delta_base` is calibrated as a **quantile of the observed `D_ij` distribution**.
+A policy-level adversary's edges sit far out in that distribution, so an
+adversary present during calibration **widens the very radius meant to exclude
+it**. Measured on a smoke config with only `f = 0.5` arms: `delta_base` went
+`0.1 -> 1.2545` and `gamma` `1 -> 0.472` — the gate largely calibrated itself
+away before training began.
+
+This is a property of the calibration rule, not of this arm, and it applies to
+any adaptive-radius scheme fitted to the divergences it is meant to police. It
+is worth a line in the paper.
+
+`ensure_calibrations` now **prefers an unstressed D-TrOPD arm** as the
+measurement template, falling back with a loud warning if a sweep has none.
+Previously the template was just the first D-TrOPD arm, so the property held in
+every existing config **by arm order alone** — a dependency that survives a
+rename and breaks silently. `test_the_shared_calibration_is_measured_on_an_unattacked_arm`
+pins it for all three H6 configs.
+
+**What this arm can and cannot establish, stated before it runs.** Given the
+offset, "`D_ij` rises and `w_ij` collapses" follows from the attenuation formula
+and is close to arithmetic. What it establishes is that the wiring is real —
+the corruption reaches `D_ij`, the gate responds, nothing short-circuits it —
+which had never been shown. The open question is whether that attenuation
+protects **return**. The informative follow-up, not run here, is the **stealth
+threshold**: how close to `delta_i` an adversary can sit and still be admitted,
+the policy-level analogue of what `adaptive` does to trimming. `D_ij` is logged
+per edge, so it is a scope change rather than a code change.

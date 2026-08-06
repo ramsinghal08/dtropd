@@ -287,6 +287,166 @@ def test_honest_return_is_present_in_the_baseline_cell_too():
 
 
 # --------------------------------------------------------------------------- #
+# The POLICY-level adversary (SPEC D19) -- the threat the gate keys on
+# --------------------------------------------------------------------------- #
+
+
+def policy_level_config(**stress) -> Config:
+    stress.setdefault("byzantine_level", "policy")
+    stress.setdefault("byzantine_mode", "none")
+    stress.setdefault("byzantine_fraction", 0.25)
+    stress.setdefault("byzantine_scale", 1.0)
+    cfg = stress_config(**stress)
+    cfg.distill.aggregation = "sum"  # the gate must be the only defence
+    cfg.instrument.per_edge_detail = True
+    return cfg
+
+
+def edge_rows(cfg: Config, seed: int = 1) -> tuple[list, set[int]]:
+    algo = build_algorithm(cfg, seed=seed, device="cpu")
+    vec = SyncVectorEnv(cfg.env, cfg.train.num_envs, seed=derive_seed(seed, "env"))
+    algo.epoch = 0
+    algo.on_epoch_start()
+    algo.collect_rollout(vec)
+    algo.update()
+    return algo._edge_rows, set(algo.byzantine)
+
+
+def test_policy_level_adversary_elevates_divergence_and_collapses_the_weight():
+    """The pre-registered prediction, as a test.
+
+    A policy-level Byzantine neighbour broadcasts a divergent snapshot, so
+    ``D_ij`` on its edges must rise and ``w_ij`` must collapse relative to honest
+    edges. If this fails, the gate does not work against the one adversary it was
+    designed for, and no amount of the gradient-level H6 evidence would show it.
+
+    The thresholds here are deliberately loose. Given the offset, the *sizes* of
+    both effects follow from the attenuation formula and testing them tightly
+    would only re-derive arithmetic; what is not guaranteed, and is what this
+    guards, is that the corruption reaches ``D_ij`` at all and that the gate is
+    wired to respond to it.
+    """
+    rows, byz = edge_rows(policy_level_config())
+    assert byz, "no Byzantine agents were selected"
+    assert rows, "per-edge detail was not logged, so the prediction is unmeasurable"
+
+    lied = [r for r in rows if r["j"] in byz]
+    honest = [r for r in rows if r["j"] not in byz]
+    assert lied and honest
+
+    d_lied = np.mean([r["D_ij"] for r in lied])
+    d_honest = np.mean([r["D_ij"] for r in honest])
+    w_lied = np.mean([r["w_ij"] for r in lied])
+    w_honest = np.mean([r["w_ij"] for r in honest])
+
+    assert d_lied > 5 * d_honest, (
+        f"D_ij on Byzantine edges ({d_lied:.4g}) is not markedly above honest "
+        f"({d_honest:.4g}); the corruption is not reaching the divergence"
+    )
+    assert w_lied < 0.5 * w_honest, (
+        f"w_ij on Byzantine edges ({w_lied:.4g}) did not collapse relative to "
+        f"honest ({w_honest:.4g}); the gate is not attenuating the lie"
+    )
+
+
+def test_gradient_level_adversary_leaves_the_divergence_alone():
+    """The other half of the distinction, and the reason H6 came out flat.
+
+    A gradient-level adversary corrupts the aggregation site and broadcasts an
+    honest-looking snapshot, so ``D_ij`` is unchanged and the gate has nothing to
+    key on. Asserting this keeps the two levels from quietly converging into one
+    stressor -- if a future edit made the gradient attack touch the snapshot, the
+    published "the gate is blind by construction" finding would be wrong.
+    """
+    cfg = stress_config(
+        byzantine_level="gradient", byzantine_mode="adaptive", byzantine_fraction=0.25
+    )
+    cfg.instrument.per_edge_detail = True
+    rows, byz = edge_rows(cfg)
+    lied = np.mean([r["D_ij"] for r in rows if r["j"] in byz])
+    honest = np.mean([r["D_ij"] for r in rows if r["j"] not in byz])
+    assert lied == pytest.approx(honest, rel=0.5), (
+        f"a gradient-level adversary moved D_ij ({lied:.4g} vs {honest:.4g}); it "
+        "is supposed to be behaviourally invisible"
+    )
+
+
+def test_the_policy_level_adversary_keeps_its_own_actor_honest():
+    """It is an adversary, not a broken agent.
+
+    Only the broadcast snapshot carries the lie. The Byzantine agent's own actor,
+    and its own view of itself (the nonstationarity signal, pi_i under a pooled
+    trust batch), must be uncorrupted -- otherwise the arm measures an agent
+    sabotaging itself, which is a different and much weaker experiment.
+    """
+    cfg = policy_level_config()
+    algo = build_algorithm(cfg, seed=1, device="cpu")
+    algo.epoch = 0
+    algo.on_epoch_start()
+    j = algo.byzantine[0]
+
+    live = torch.cat([p.reshape(-1) for p in algo.agents[j].actor.parameters()])
+    own = torch.cat([p.reshape(-1) for p in algo.snapshots[j].parameters()])
+    sent = torch.cat([p.reshape(-1) for p in algo._broadcast[j].parameters()])
+
+    assert torch.allclose(live, own), "the agent's own snapshot was corrupted"
+    assert not torch.allclose(own, sent), "the broadcast snapshot carries no lie"
+
+    honest_j = next(i for i in range(algo.n_agents) if i not in algo._byzantine_set)
+    assert algo._broadcast[honest_j] is algo.snapshots[honest_j], (
+        "an honest agent's broadcast was copied rather than shared, which would "
+        "change its numerics for no reason"
+    )
+
+
+def test_the_lie_is_the_same_lie_every_epoch():
+    """A direction redrawn per epoch is a flapping adversary whose successive
+    lies partly cancel -- a weaker attack wearing the same name."""
+    cfg = policy_level_config()
+    algo = build_algorithm(cfg, seed=1, device="cpu")
+    j = algo.byzantine[0]
+    offsets = []
+    for epoch in range(3):
+        algo.epoch = epoch
+        algo.on_epoch_start()
+        own = torch.cat([p.reshape(-1) for p in algo.snapshots[j].parameters()])
+        sent = torch.cat([p.reshape(-1) for p in algo._broadcast[j].parameters()])
+        offsets.append(sent - own)
+    for later in offsets[1:]:
+        assert torch.allclose(offsets[0], later)
+
+
+def test_policy_level_keeps_the_cheap_loss_path():
+    """The per-edge path is forced only for the gradient-level adversary, which
+    has nowhere else to be injected. Forcing it here would change the plain-sum
+    arm's numerics for an attack that never touches a gradient."""
+    assert build_algorithm(policy_level_config(), seed=1, device="cpu")._uses_loss_path
+
+
+def test_a_policy_level_arm_needs_no_gradient_mode():
+    """`byzantine_mode` names a gradient attack. Requiring one at the policy
+    level would make every such config declare an attack it does not run."""
+    cfg = policy_level_config()
+    assert cfg.stress.byzantine_agents_enabled
+    assert build_algorithm(cfg, seed=1, device="cpu").byzantine
+
+    noisy = policy_level_config(byzantine_mode="adaptive")
+    warnings = noisy.stress.validate(noisy.env.n_agents)
+    assert any("NOT applied at the policy level" in w for w in warnings), (
+        "a policy-level config that also names a gradient attack must say the "
+        "gradient attack does not run"
+    )
+
+
+def test_zero_offset_policy_adversary_is_flagged_as_the_baseline():
+    cfg = policy_level_config(byzantine_scale=0.0)
+    assert any(
+        "honest and this is the f=0 baseline" in w
+        for w in cfg.stress.validate(cfg.env.n_agents)
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Communication dropout
 # --------------------------------------------------------------------------- #
 

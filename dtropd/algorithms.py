@@ -26,7 +26,7 @@ import torch.nn as nn
 from torch import Tensor
 
 from .buffer import RolloutBuffer
-from .byzantine import apply_attack, byzantine_agents
+from .byzantine import apply_attack, byzantine_agents, corrupt_snapshot
 from .calibration import CalibrationError, CalibrationRecord, env_fingerprint
 from .config import Config, ConfigError, DistillConfig
 from .env import SyncVectorEnv, ZoneKind
@@ -931,6 +931,9 @@ class SnapshotDistillBase(IPPO):
             )
 
         self.snapshots: list[TanhGaussianActor] | None = None
+        #: What neighbours receive. Identical to :attr:`snapshots` unless a
+        #: policy-level adversary is active; see :meth:`_rebuild_broadcast`.
+        self._broadcast: list[TanhGaussianActor] = []
         self._social: list[TeacherBundle | None] = [None] * self.n_agents
         self._beta: float = 0.0
         self.epoch_snapshot_bytes = 0
@@ -956,7 +959,25 @@ class SnapshotDistillBase(IPPO):
         self._byzantine_gen = torch.Generator(device="cpu").manual_seed(
             derive_seed(seed, "byzantine_noise")
         )
-        self._uses_loss_path = d.aggregation == "sum" and not self.byzantine
+        #: Which threat model the Byzantine agents implement (SPEC D19). These
+        #: are different adversaries, not intensities of one: "gradient" corrupts
+        #: the per-edge gradient and leaves the broadcast policy honest-looking,
+        #: so the trust gate is blind to it; "policy" broadcasts a divergent
+        #: snapshot, which is what the gate keys on.
+        self._byzantine_level = stress.byzantine_level
+        #: Fixed once per run, per Byzantine agent: the direction of the lie. See
+        #: byzantine.corrupt_snapshot on why it must not be redrawn per epoch.
+        self._policy_offsets: dict[int, float] = {}
+        if self._byzantine_level == "policy":
+            for j in self.byzantine:
+                sign = 1.0 if torch.rand((), generator=self._byzantine_gen).item() < 0.5 else -1.0
+                self._policy_offsets[j] = sign * stress.byzantine_scale
+        # The per-edge gradient path is only forced for the GRADIENT-level
+        # adversary, which has nowhere else to be injected. A policy-level
+        # adversary corrupts the broadcast snapshot, which the plain-sum loss
+        # path consumes just as faithfully -- forcing the slower path there would
+        # change the aggregation arm's numerics for no reason.
+        self._uses_loss_path = d.aggregation == "sum" and not self._corrupts_gradients()
         self._retain_graph = not self._uses_loss_path
 
         # Communication dropout (Phase 7). Its own stream, so turning dropout on
@@ -971,6 +992,10 @@ class SnapshotDistillBase(IPPO):
 
     # -- Phase 7 / H6: Byzantine neighbours ------------------------------------ #
 
+    def _corrupts_gradients(self) -> bool:
+        """Whether an adversary is active *at the aggregation site*."""
+        return bool(self.byzantine) and self._byzantine_level == "gradient"
+
     def _corrupt_byzantine_edges(self, agent_idx: int, stacked: Tensor) -> Tensor:
         """Replace rows contributed by Byzantine neighbours with their attack.
 
@@ -978,7 +1003,7 @@ class SnapshotDistillBase(IPPO):
         so the Byzantine rows are found by membership rather than by position --
         neighbour lists differ per agent and are not sorted by agent index.
         """
-        if not self.byzantine:
+        if not self._corrupts_gradients():
             return stacked
         state = self._social[agent_idx]
         if state is None or not state.neighbors:
@@ -1001,6 +1026,28 @@ class SnapshotDistillBase(IPPO):
             generator=self._byzantine_gen,
         )
 
+    def _rebuild_broadcast(self) -> None:
+        """Split what an agent *sends* from what it *is* (SPEC D19).
+
+        ``self.snapshots[i]`` is agent ``i``'s true frozen policy and is what
+        ``i`` itself is measured against -- its own nonstationarity signal, and
+        pi_i under ``trust_batch='pooled'``. ``self._broadcast[i]`` is what
+        ``i``'s neighbours receive. For an honest agent these are the same object;
+        for a policy-level Byzantine agent the broadcast copy carries the lie,
+        while the agent keeps acting and learning normally. Corrupting
+        ``self.snapshots`` directly would also poison the adversary's own radius,
+        which is a broken agent, not an adversary.
+        """
+        assert self.snapshots is not None
+        if not self._policy_offsets:
+            self._broadcast = self.snapshots
+            return
+        self._broadcast = list(self.snapshots)
+        for j, offset in self._policy_offsets.items():
+            lie = copy.deepcopy(self.snapshots[j])
+            corrupt_snapshot(lie, offset)
+            self._broadcast[j] = lie
+
     # -- SPEC Sec. 2.1 step 1: broadcast frozen snapshots ----------------------- #
 
     @staticmethod
@@ -1014,6 +1061,7 @@ class SnapshotDistillBase(IPPO):
 
     def on_epoch_start(self) -> None:
         self.snapshots = [self._freeze(ac.actor) for ac in self.agents]
+        self._rebuild_broadcast()
         self._epoch_neighbors = self._deliver_snapshots()
         # Communication volume: one actor snapshot per directed edge that
         # actually delivered. Counting the dropped ones would overstate the
@@ -1052,7 +1100,7 @@ class SnapshotDistillBase(IPPO):
         assert self.snapshots is not None
         mus, log_stds = [], []
         for j in neighbors:
-            mu_j, log_std_j = self.snapshots[j](data["obs"])
+            mu_j, log_std_j = self._broadcast[j](data["obs"])
             mus.append(mu_j)
             log_stds.append(log_std_j)
         return TeacherBundle(
@@ -1322,6 +1370,11 @@ class SnapshotDistillBase(IPPO):
         super().load_state_dict(state)
         self.total_snapshot_bytes = int(state.get("total_snapshot_bytes", 0))
         self.snapshots = self._restore_snapshots(state.get("snapshots"))
+        # Only the honest snapshots are checkpointed; the lie is a deterministic
+        # function of them and of the fixed per-agent offset, so it is rebuilt
+        # rather than stored -- a resumed run cannot silently drop the adversary.
+        if self.snapshots is not None:
+            self._rebuild_broadcast()
 
 
 # --------------------------------------------------------------------------- #
@@ -1509,7 +1562,7 @@ class DTrOPD(SnapshotDistillBase):
         trust_obs, trust_mu, trust_log_std = self._trust_states(agent_idx, data)
         divergence = torch.stack(
             [
-                mean_gaussian_kl(trust_mu, trust_log_std, *self.snapshots[j](trust_obs))
+                mean_gaussian_kl(trust_mu, trust_log_std, *self._broadcast[j](trust_obs))
                 for j in bundle.neighbors
             ]
         ).detach()

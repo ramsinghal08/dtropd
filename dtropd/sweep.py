@@ -374,10 +374,32 @@ def ensure_calibrations(plan: SweepPlan, seed: int | None = None) -> dict[str, A
         cal_dir.mkdir(parents=True, exist_ok=True)
         path = cal_dir / f"{fingerprint}.json"
         if not path.exists():
-            template = next(a for a in arms if a.algo == "dtropd").config(plan.base)
+            # Prefer an UNSTRESSED arm to measure on. delta_base is a quantile of
+            # the observed D_ij distribution, and a policy-level adversary's
+            # edges sit far out in that distribution -- calibrating with one
+            # active lets the adversary widen the very radius that is supposed to
+            # exclude it. Measured on a smoke config at f=0.5: delta_base 0.1 ->
+            # 1.2545, i.e. the gate largely calibrated itself away.
+            candidates = [a for a in arms if a.algo == "dtropd"]
+            clean = [a for a in candidates if not a.config(plan.base).stress.active]
+            template_arm = clean[0] if clean else candidates[0]
+            if not clean:
+                logger.warning(
+                    "environment %s has no unstressed D-TrOPD arm, so the shared "
+                    "calibration is measured on %r WITH its stressor active. "
+                    "delta_base is a quantile of the observed D_ij distribution, "
+                    "so an adversary present during calibration moves the trust "
+                    "radius itself. Add an f=0 arm if the radius is meant to be "
+                    "independent of the attack.",
+                    fingerprint,
+                    template_arm.name,
+                )
+            template = template_arm.config(plan.base)
             logger.info(
-                "deriving the shared calibration for environment %s (%d arms)",
+                "deriving the shared calibration for environment %s from arm %r "
+                "(%d arms)",
                 fingerprint,
+                template_arm.name,
                 len(arms),
             )
             record = _measure_calibration(
