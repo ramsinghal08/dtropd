@@ -455,6 +455,40 @@ finding, and it is only sayable because the components were measured separately
 rather than inferred from the headline. A paper that reported only H7 would have
 a null; a paper that reports the mechanisms and then H7 has an explanation.
 
+### The cost is distillation's, and the gate is not part of it
+
+The sweep ran MAPPO and HAPPO too, none of the five arms tuned beyond the shared
+base config. Heterogeneous, paired against IPPO:
+
+| arm | vs IPPO |
+|---|---|
+| **HAPPO** | **+0.148 [−1.847, +2.002]** |
+| MAPPO | −3.500 [−5.184, −1.713] |
+| NaiveDistill | −8.154 [−10.529, −6.099] |
+| D-TrOPD | −8.708 [−11.429, −6.153] |
+
+**HAPPO ties IPPO.** The deficit is therefore not the environment, the horizon
+or the untuned shared config — a trust-region baseline reaches IPPO's level on
+the same budget. The environment discriminates rather than flattening: MAPPO's
+centralised critic is significantly *worse* than independent learning under
+heterogeneity.
+
+And the gate contributes nothing. D-TrOPD − NaiveDistill, paired by seed, at all
+four grid points in both environments: **all eight CIs span zero, every |mean| ≤
+1.6** against deficits of ~8. The entire difference between the two algorithms is
+the trust gate, and it is worth nothing in return here. F-1 predicted this from
+`w_ij ≈ 0.96` at degree 11; this is the same conclusion read off *return*, with
+paired seeds, in H7's own environment.
+
+The refutation is also unanimous rather than marginal: D-TrOPD loses to IPPO on
+**79 of 80** paired seed comparisons (10/10 in seven of the eight
+environment × grid-point cells).
+
+So the claim is not "D-TrOPD did not beat IPPO". It is: **every mechanism is
+confirmed, the trust gate contributes nothing to return, and distillation itself
+costs ~8 uniformly across heterogeneity — while a trust-region baseline on the
+same budget ties IPPO.**
+
 ### Where the cost comes from, and what is not yet ruled out
 
 D9's consensus-pull cost — `R(IPPO) − R(D-TrOPD)` on the homogeneous control —
@@ -462,12 +496,11 @@ is +6.6 to +9.6, essentially the whole gap. D9 framed it as the floor a
 heterogeneous benefit must clear. **There is no heterogeneous benefit; the floor
 is the result.**
 
-One scope statement, resting on a measurement taken *before* H7 ran and offered
-as a hypothesis rather than a defence: the H7 environment is a complete graph on
-12 agents, and finding F-1 established that **the trust gate is inert at high
-degree** (`w ≈ 0.96`). D-TrOPD is therefore behaviourally close to NaiveDistill
-here, and the measured costs agree (+8.40 vs +8.19 at the calibrated point). So
-what H7 refutes with certainty is *distillation with an inactive gate*.
+One scope statement, no longer a hypothesis: the H7 environment is a complete
+graph on 12 agents, F-1 established that **the trust gate is inert at high
+degree** (`w ≈ 0.96`), and the D-TrOPD − NaiveDistill table above confirms it in
+return terms. So what H7 refutes is **distillation**, with the gate shown to be
+inactive rather than assumed to be.
 
 A lower-degree test would be a **new experiment** needing its own pre-registered
 rule, and this refutation stands regardless of its outcome. Running environment

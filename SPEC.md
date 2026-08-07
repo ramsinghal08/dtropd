@@ -1479,3 +1479,60 @@ collapses by 7× while the gated one does not move.
 
 The honest summary of this project is that **the mechanisms work as specified
 and do not, in this environment, produce a net return benefit.**
+
+### The full arm ladder — the cost is DISTILLATION's, not the environment's
+
+Heterogeneous environment, paired against IPPO, 10 seeds. IPPO, MAPPO and HAPPO
+carry no `delta_base`, so their rows are identical at every grid point.
+
+| arm | vs IPPO | IQM |
+|---|---|---|
+| IPPO | — | −26.21 |
+| **HAPPO** | **+0.148 [−1.847, +2.002]** | −26.99 |
+| MAPPO | −3.500 [−5.184, −1.713] | −31.11 |
+| NaiveDistill | −8.154 [−10.529, −6.099] | −35.48 |
+| D-TrOPD | −8.708 [−11.429, −6.153] | −36.53 |
+
+**HAPPO ties IPPO.** That settles the question the −8 could not answer on its
+own: the environment is not simply hard for everything, and the deficit is not
+an artifact of the task, the horizon or the shared hyperparameters. A trust-region
+baseline reaches IPPO's level on the same budget with the same untuned config.
+The environment also discriminates — MAPPO's centralised critic is significantly
+*worse* than independent learning under heterogeneity, which is its own small
+observation and worth a line.
+
+**The ~8-return deficit belongs to distillation.**
+
+### The gate buys nothing over ungated distillation — measured, not inferred
+
+D-TrOPD − NaiveDistill, paired by seed, at every grid point in both environments:
+
+| point | heterogeneous | homogeneous |
+|---|---|---|
+| w6  | +0.374 [−1.371, +1.755] | +1.579 [−0.444, +3.635] |
+| w8  | −0.553 [−1.852, +0.363] | −0.217 [−2.840, +2.322] |
+| w10 | −0.343 [−2.037, +1.090] | +0.772 [−1.053, +2.560] |
+| x2  | −0.387 [−2.118, +1.102] | −1.445 [−3.412, +0.365] |
+
+**All eight span zero; every |mean| ≤ 1.6 against deficits of ~8.** The trust
+gate — the entire difference between D-TrOPD and NaiveDistill — contributes
+nothing to return here, in either environment, at any point of the grid.
+
+This converts the earlier scope statement from a hypothesis into a measurement.
+F-1 predicted gate inertness at degree 11 from `w_ij ≈ 0.96`; this is the same
+conclusion read off *return*, in H7's own environment, with paired seeds. What
+H7 refutes is **distillation**, and the gate is not what is costing the 8.
+
+### The refutation is unanimous, not marginal
+
+D-TrOPD is worse than IPPO on **10/10 seeds** in 7 of the 8 environment × grid
+point cells, and 9/10 in the eighth. 79 of 80 paired seed comparisons. This is
+not a CI that happens to exclude zero.
+
+### The sentence the paper leads with
+
+Not "D-TrOPD did not beat IPPO." The measured claim is:
+
+> **Every mechanism is confirmed; the trust gate contributes nothing to return;
+> and distillation itself costs ~8 return in this environment, uniformly across
+> heterogeneity, while a trust-region baseline on the same budget ties IPPO.**
