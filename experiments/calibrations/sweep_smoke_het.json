@@ -24,7 +24,7 @@
   "env_fingerprint": "8b30113603caa909",
   "created_at": "2026-08-05T07:56:57+0000",
   "seed": 0,
-  "source_config": "/tmp/claude-0/-home-user-dtropd/264cd958-be04-57dc-a91e-ada94b9f427b/scratchpad/cal_het.yaml",
+  "source_config": "scratch/cal_het.yaml",
   "note": "measured in-run (distill.calibration=warmup)",
   "calibration_target_w": 0.5,
   "tail_quantile": 0.95,

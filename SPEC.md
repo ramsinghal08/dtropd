@@ -227,7 +227,7 @@ If any of these appear, an old bug has returned:
 
 ---
 
-## 9. Rules of engagement for Claude Code
+## 9. Rules of engagement
 
 1. **One phase at a time.** Stop at each acceptance test, report the result, wait for approval.
 2. **Tests before features** for anything touching Sec. 2 math.

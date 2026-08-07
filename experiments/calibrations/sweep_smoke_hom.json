@@ -24,7 +24,7 @@
   "env_fingerprint": "61a547c7d1119d2c",
   "created_at": "2026-08-05T07:57:00+0000",
   "seed": 0,
-  "source_config": "/tmp/claude-0/-home-user-dtropd/264cd958-be04-57dc-a91e-ada94b9f427b/scratchpad/cal_hom.yaml",
+  "source_config": "scratch/cal_hom.yaml",
   "note": "measured in-run (distill.calibration=warmup)",
   "calibration_target_w": 0.5,
   "tail_quantile": 0.95,
