@@ -1250,3 +1250,81 @@ keys are uppercase. Case-insensitive, with a named error for unknown keys.
 **Prediction (3) for the policy-level arm cannot be read off the existing runs**
 — they predate the honest split. It needs `runs/h6_policy_level` re-run, which
 also gets it the corrected metric everywhere else.
+
+---
+
+## 21. H6(c) prediction (3), and H3's verdict — 2026-08-07
+
+### H6(c) prediction (3) — CONFIRMED, and it is the load-bearing one
+
+Honest-agent final return, 10 paired seeds, paired against **each algorithm's
+own `f = 0`**.
+
+| `f` | D-TrOPD (gated) | paired Δ vs own `f=0` | NaiveDistill (`w=1`) | paired Δ vs own `f=0` |
+|---|---|---|---|---|
+| 0.0 | −36.51 | — | −35.80 | — |
+| 0.2 | −35.97 | **+0.54 [−1.07, +2.08]** | **−196.96** | **−161.16 [−261.91, −61.58]** |
+| 0.5 | −35.35 | **+1.16 [−0.48, +3.11]** | **−252.70** | **−216.91 [−301.59, −122.85]** |
+
+**The ungated learner collapses by 5.5× and 7.1×. The gated one does not move.**
+Both D-TrOPD CIs span zero; both NaiveDistill CIs are nowhere near it. At `f = 0`
+the two algorithms are equal (−36.51 vs −35.80), so this is not a baseline
+difference wearing an `f` axis.
+
+**This also retires H6's open question, for this threat model.** The ungated
+control collapsing proves the adversary lands, and the gated arm's flatness is
+therefore a defence rather than an inert channel — exactly the discriminator
+H6(b) was built to provide, here supplied by H6(c). The variance decomposition
+points the right way for the first time: between-condition sd **99.14** against
+within-cell seed sd **59.08**, where H6 had 0.58 against 6.81.
+
+**What it does and does not establish, stated as plainly as before the run.**
+NaiveDistill is the *no-defence ablation*, not a Byzantine-robust baseline: it
+distils toward the lie with `w = 1`, so its collapse is expected. What the arm
+shows is that the trust gate is **necessary and sufficient** against a
+policy-level adversary in this setting — not that D-TrOPD beats a robust
+aggregator. Since predictions (1) and (2) are near-arithmetic given the offset,
+**(3) is the result that carries the claim**.
+
+### H3 — 3 of 4 criteria confirmed; the miss is a false PREMISE, not a bad radius
+
+`delta` is recovered per arm by inverting `delta = delta_base·exp(-kappa·signal)`.
+
+| criterion | signal | ratio | expected | verdict |
+|---|---|---|---|---|
+| (1) scale invariance | nonstationarity | **1.099** | ~1.0 | **CONFIRMED** |
+| (1) scale invariance | value variance | **0.0** | far from 1 | **CONFIRMED** (hard zero) |
+| (2) contraction under instability | nonstationarity | **1.057** | < 1.0 | **not confirmed** — see below |
+| (2) sign pathology | value variance | **3037×** | grows | **CONFIRMED** |
+
+**(2) nonstationarity: the premise fails, not the mechanism.** H3 assumed a
+degenerate critic *destabilises* the policy, giving larger `Delta_i` and hence a
+smaller radius. Inverting the measured radii gives
+`Delta_healthy = 4.52e-3` nats and `Delta_degenerate = 3.97e-3` — the frozen
+critic made the policy **12% MORE stable**. A critic frozen at initialisation
+produces near-uninformative advantages, so the policy gradient is weaker and the
+policy moves *less* between epochs. The radius did exactly what its formula says;
+the hypothesis's assumed causal chain from critic degeneracy to policy
+instability does not hold in this environment. Recorded as a refuted premise, in
+the same category as H1's "untestable at this horizon" — not as a failed radius.
+
+**(2) value variance: the I1 pathology, at full strength.** The degenerate arm's
+`Var(V)` is 8.11 against the healthy arm's 20.71, so the critic that explains
+nothing earns a radius **3037× larger**. This is precisely what I1 forbids, and
+it was unmeasurable before D18 because both arms were pinned at exactly zero.
+
+### D18's `kappa` fix worked as specified, and exposed a further problem
+
+The fix did what D18 claimed: the arm can now express its prediction (the 3037×
+ratio above). But the healthy `valvar` radius is still numerically negligible at
+`1.53e-7`, and inverting it says why — late-training `Var(V) = 20.71`, against a
+calibration window whose maximum was 3.27. **`Var(V)` grew 6.3× beyond the window
+`kappa` was derived on.**
+
+This sharpens Remark 2 again (THEORY_CHANGES §4). The value-variance radius does
+not merely need re-tuning across *reward scales*; it needs re-tuning across
+**training time**, because the magnitude of `Var(V)` is itself non-stationary. A
+KL-valued signal has no such problem — it is dimensionless *and* its scale does
+not drift with the value function's spread. One calibration cannot serve a
+value-variance radius over a whole run, which is a stronger objection to it than
+the reward-scaling one.

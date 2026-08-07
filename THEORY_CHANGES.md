@@ -290,3 +290,78 @@ across two runs. Three cells of the completed H6 sweep were affected (59, 56 and
 must treat duplicate keys as corruption rather than data. "Append-only" is the
 right shape for a log and the wrong shape for a result. The self-announcing
 failure is a courtesy; design for the silent one.
+
+---
+
+## 9. The trust gate is necessary and sufficient against a policy-level
+   adversary — the ungated learner collapses by 7×
+
+Honest-agent final return, 10 paired seeds, plain-sum aggregation so the gate is
+the only defence in play, paired against **each algorithm's own `f = 0`**.
+
+| `f` | D-TrOPD (gated) | paired Δ | NaiveDistill (`w=1`) | paired Δ |
+|---|---|---|---|---|
+| 0.0 | −36.51 | — | −35.80 | — |
+| 0.2 | −35.97 | +0.54 [−1.07, +2.08] | **−196.96** | **−161.16 [−261.91, −61.58]** |
+| 0.5 | −35.35 | +1.16 [−0.48, +3.11] | **−252.70** | **−216.91 [−301.59, −122.85]** |
+
+The two algorithms are indistinguishable at `f = 0` and separated by an order of
+magnitude at `f > 0`. Every gated CI spans zero; no ungated CI comes near it.
+
+Read with §7: the gate removes **100%** of a lying neighbour's weight, and that
+translates into **complete** protection of return. It also answers §7b's open
+question — the compounding consensus loss among honest agents (their `w_ij`
+falls to 0.708 at `f = 0.5`) **does not cost return**. The defence's second-order
+cost is real in the consensus metric and invisible in the outcome.
+
+*Scope, stated as it was before the run:* NaiveDistill is the no-defence
+ablation, not a Byzantine-robust baseline. This establishes the gate as necessary
+and sufficient against a policy-level adversary here — not that D-TrOPD beats a
+robust aggregator, which is a different comparison against a different threat
+model (§5).
+
+---
+
+## 10. A value-variance radius cannot be calibrated ONCE, even at fixed reward
+    scale — `Var(V)` drifts with training
+
+§4 said the value-variance radius is unusable across reward scales without
+re-tuning. It is worse than that, and the sharper claim came out of fixing it.
+
+With `kappa_valvar = 0.636` derived on an observed `Var(V)` range of
+`[0.124, 3.270]`, the late-training radius is `1.53e-7` — still numerically
+zero. Inverting `delta = delta_base·exp(-kappa·Var(V))` gives late-training
+`Var(V) = 20.71`: **6.3× beyond the window the constant was derived on**, at
+unchanged reward scale.
+
+So a value-variance radius needs re-tuning across **training time** as well as
+across reward scale, because the magnitude of `Var(V)` is non-stationary. A
+KL-valued signal has neither problem: it is dimensionless, and its scale does not
+drift with the spread of the value function. **One calibration cannot serve a
+value-variance radius over a single run** — a stronger objection than the
+reward-scaling one, and again an argument from what the quantity *is* rather than
+from a benchmark.
+
+The I1 pathology is now measurable, which was the point of the fix: the
+degenerate critic's `Var(V)` is 8.11 against the healthy 20.71, so a critic that
+explains nothing earns a radius **3037× larger**.
+
+---
+
+## 11. A refuted premise: a degenerate critic does not destabilise the policy
+
+H3 predicted the nonstationarity radius CONTRACTS under an intentionally
+degenerate critic, reasoning that a destabilised policy has larger `Delta_i`.
+Measured ratio **1.057** — the radius slightly *grew*.
+
+Inverting the radii gives the reason: `Delta_healthy = 4.52e-3` nats against
+`Delta_degenerate = 3.97e-3`. **The frozen critic made the policy 12% MORE
+stable.** A critic frozen at initialisation produces near-uninformative
+advantages, so the policy gradient is weaker and the policy moves less between
+epochs.
+
+The radius did exactly what `delta = delta_base·exp(-kappa·Delta)` specifies.
+What failed is the hypothesis's assumed causal chain from critic degeneracy to
+policy instability. Worth a line in the paper because the intuition is natural
+and wrong: **a broken critic is not a source of policy instability; it is a
+source of policy inertia.**
