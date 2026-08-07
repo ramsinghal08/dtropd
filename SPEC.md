@@ -1328,3 +1328,71 @@ KL-valued signal has no such problem — it is dimensionless *and* its scale doe
 not drift with the value function's spread. One calibration cannot serve a
 value-variance radius over a whole run, which is a stronger objection to it than
 the reward-scaling one.
+
+---
+
+## 22. H7 approved and launched — 2026-08-07
+
+### D20 — H7's reporting contract, fixed BEFORE any result
+
+Recorded here rather than decided when the numbers land.
+
+1. **The INTERACTION is the claim (D8).** Three quantities per grid point, each
+   with a CI: the heterogeneous difference, the homogeneous difference, and
+   `interaction = het − hom`. The predicted **sign flip** (`het > 0` and
+   `hom < 0`) is the result. A point counts as confirming only if the
+   interaction's CI excludes zero on the positive side **and** the sign flip is
+   observed. An algorithm merely better everywhere satisfies the first and not
+   the second, and does not support the paper's claim.
+2. **The D7 sensitivity verdict is computed at all four grid points.** Identical
+   at every point → the conclusion is stable and the window choice is
+   immaterial. A flip → the benefit is calibration-sensitive and **that is the
+   finding**, reported as a limitation. Never select the point with the nicer
+   answer.
+3. **≥10 seeds, paired, identical environment instances** for D-TrOPD vs IPPO.
+4. **The D9 consensus-pull cost appears in the H7 table**, separately from
+   return and never as a proxy for it — THEORY_CHANGES §12 measured a 26% swing
+   in honest consensus weight with zero detectable effect on return.
+5. **H7 uses final return as its outcome variable**, and is the one hypothesis
+   for which that is correct (`RETURN_IS_THE_OUTCOME = ("h7",)`).
+
+`experiments/h7_report.py` implements all five and is the artifact the verdict
+is read from. It was exercised on synthetic fixtures including a
+verdict-flipping grid **before** any real point existed, so its behaviour on an
+unfavourable result is not first observed on an unfavourable result.
+
+### Three defects fixed before launch, all of which would have corrupted H7
+
+**`D7_DELTA_BASE_GRID` was stale.** It read `(0.022, 0.026, 0.049)` — a
+placeholder from before the grid was measured on the real H7 environment, never
+updated when D17 signed off the four measured points. Nothing consumed it on a
+real sweep, so it went stale invisibly, and `d7_sensitivity_verdict` would have
+reported `complete: False` with every real point listed as missing. Replaced by
+`D7_GRID_POINTS` (labels, since `delta_base` differs per environment and a bare
+float can never name a point) plus `D7_DELTA_BASE`, with
+`test_d7_grid_constant_matches_the_shipped_configs` asserting they match the
+shipped YAML.
+
+**The interaction had no confidence interval.** `h7_interaction` returned it as
+a bare float, so D8's claim reduced to eyeballing two separate CIs — which is
+not a test of their difference. It now returns `interaction_ci`, bootstrapped
+over per-seed interactions. The environments differ, so the episodes are not
+shared; what the pairing removes is the seed's shared effect on initialisation,
+which both environments inherit.
+
+**The pairing was positional.** Blocks were `{algo: [value per seed]}`, aligned
+only by the manifest happening to be in plan order. `collect_final_returns(...,
+by_seed=True)` returns `{algo: {seed: value}}` and the interaction pairs on the
+key. A resumed or reordered sweep would otherwise have paired one seed's
+treatment against another's control and reported it with a confident CI.
+
+### The run
+
+`./experiments/run_h7_grid.sh` — 4 points × 80 cells (8 arms × 10 seeds) = **320
+cells**, ~27 CPU-hours, resumable per point and per cell. Arms: IPPO, D-TrOPD,
+NaiveDistill, MAPPO, HAPPO on the heterogeneous environment; IPPO, D-TrOPD,
+NaiveDistill on the homogeneous control.
+
+**The verdict is reported whatever it is.** A refuted H7 at this level of rigour
+is a publishable result, and the paper carries seven confirmed mechanism
+findings that do not depend on it.

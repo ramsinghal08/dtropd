@@ -665,9 +665,18 @@ def run_sweep(
 # --------------------------------------------------------------------------- #
 
 
-def collect_final_returns(manifest: dict[str, Any]) -> dict[str, dict[str, list[float]]]:
-    """``{condition: {algo: [final return per seed]}}`` from stored metrics only."""
-    out: dict[str, dict[str, list[float]]] = {}
+def collect_final_returns(
+    manifest: dict[str, Any], *, by_seed: bool = False
+) -> dict[str, dict[str, Any]]:
+    """``{condition: {algo: [final return per seed]}}`` from stored metrics only.
+
+    With ``by_seed=True`` the innermost value is ``{seed: return}`` instead of a
+    list. Any PAIRED statistic must use that form: a bare list is aligned only by
+    the manifest happening to be in plan order, which is true today and is not a
+    guarantee anything should rest on -- a resumed or reordered sweep would pair
+    seed 3's treatment against seed 7's control and report it with a confident CI.
+    """
+    out: dict[str, dict[str, Any]] = {}
     for entry in manifest["runs"]:
         if entry["purpose"] != "algorithm":
             continue
@@ -676,7 +685,11 @@ def collect_final_returns(manifest: dict[str, Any]) -> dict[str, dict[str, list[
             continue
         evals = [r["eval/return_mean"] for r in records if "eval/return_mean" in r]
         final = evals[-1] if evals else records[-1].get("episode_return_mean", float("nan"))
-        out.setdefault(entry["condition"], {}).setdefault(entry["algo"], []).append(float(final))
+        block = out.setdefault(entry["condition"], {})
+        if by_seed:
+            block.setdefault(entry["algo"], {})[int(entry["seed"])] = float(final)
+        else:
+            block.setdefault(entry["algo"], []).append(float(final))
     return out
 
 
@@ -739,7 +752,11 @@ def sweep_report(manifest: dict[str, Any], seed: int = 0) -> dict[str, Any]:
     hom = blocks.get("homogeneous", {})
     if het and hom:
         # SPEC Sec. 10 / D8: the claim is the sign flip across environments.
-        report["h7_interaction"] = h7_interaction(het, hom, seed=seed)
+        # Passed SEED-KEYED so the interaction CI is genuinely paired.
+        by_seed = collect_final_returns(manifest, by_seed=True)
+        report["h7_interaction"] = h7_interaction(
+            by_seed.get("heterogeneous", het), by_seed.get("homogeneous", hom), seed=seed
+        )
     if hom.get("ippo") and any(a in hom for a in REPORTED_DISTILLERS):
         # SPEC Sec. 11 / D9: the floor the heterogeneous benefit must clear.
         report["consensus_pull_cost"] = {

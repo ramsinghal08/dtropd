@@ -34,6 +34,8 @@ __all__ = [
     "bootstrap_ci",
     "consensus_pull_cost",
     "d7_sensitivity_verdict",
+    "D7_GRID_POINTS",
+    "D7_DELTA_BASE",
     "D7_DELTA_BASE_GRID",
     "h7_interaction",
 ]
@@ -467,9 +469,16 @@ def h7_interaction(
     and whether the predicted **sign flip** occurred. The claim is the flip, not
     either difference alone.
     """
-    def paired_diff(block: dict[str, Sequence[float]]) -> dict[str, Any]:
-        t = np.asarray(list(block.get(treatment, [])), dtype=np.float64)
-        c = np.asarray(list(block.get(control, [])), dtype=np.float64)
+    def _values(block: dict[str, Any], algo: str) -> np.ndarray:
+        """Accept either ``[value per seed]`` or ``{seed: value}``. The dict form
+        is what makes a pairing real rather than positional."""
+        v = block.get(algo, [])
+        if isinstance(v, dict):
+            return np.asarray([v[k] for k in sorted(v)], dtype=np.float64)
+        return np.asarray(list(v), dtype=np.float64)
+
+    def paired_diff(block: dict[str, Any]) -> dict[str, Any]:
+        t, c = _values(block, treatment), _values(block, control)
         if t.size == 0 or c.size == 0:
             return {"mean": float("nan"), "ci": {}, "n": 0}
         if t.size == c.size:
@@ -484,6 +493,32 @@ def h7_interaction(
 
     het, hom = paired_diff(heterogeneous), paired_diff(homogeneous)
     interaction = het["mean"] - hom["mean"]
+
+    # A CI ON THE INTERACTION ITSELF. Without one the claim reduces to eyeballing
+    # two separate CIs, which is not a test of their difference. Paired on SEED
+    # INDEX across the two environments: the environments differ, so the episodes
+    # are NOT shared -- what the pairing removes is the seed's shared effect on
+    # initialisation, which both environments inherit.
+    inter_ci: dict[str, Any] = {}
+    inter_pairs = 0
+    if isinstance(heterogeneous.get(treatment), dict):
+        seeds = sorted(
+            set(heterogeneous.get(treatment, {}))
+            & set(heterogeneous.get(control, {}))
+            & set(homogeneous.get(treatment, {}))
+            & set(homogeneous.get(control, {}))
+        )
+        if seeds:
+            per_seed = np.array(
+                [
+                    (heterogeneous[treatment][s] - heterogeneous[control][s])
+                    - (homogeneous[treatment][s] - homogeneous[control][s])
+                    for s in seeds
+                ],
+                dtype=np.float64,
+            )
+            inter_ci = bootstrap_ci(per_seed, seed=seed)
+            inter_pairs = len(seeds)
     sign_flip = (
         np.isfinite(het["mean"])
         and np.isfinite(hom["mean"])
@@ -496,6 +531,8 @@ def h7_interaction(
         "heterogeneous_difference": het,
         "homogeneous_difference": hom,
         "interaction": interaction,
+        "interaction_ci": inter_ci,
+        "interaction_n_pairs": inter_pairs,
         "predicted_sign_flip_observed": bool(sign_flip),
         "claim": (
             "D-TrOPD beats IPPO under heterogeneity while costing something "
@@ -542,41 +579,80 @@ def consensus_pull_cost(
 # D7 -- the calibration-sensitivity decision rule, fixed before any result
 # --------------------------------------------------------------------------- #
 
-#: The three delta_base values H7 runs at: what the 6-, 8- and 10-epoch
-#: calibration windows actually produced on this environment (SPEC Sec. 11 / D7).
-D7_DELTA_BASE_GRID: tuple[float, ...] = (0.022, 0.026, 0.049)
+#: H7's calibration-sensitivity grid, as LABELLED POINTS (SPEC Sec. 11 / D7,
+#: Sec. 12 / D7-AMENDED, Sec. 16 / D17). Labels rather than bare floats because
+#: `delta_base` differs between H7's two environments -- D6 gives each its own
+#: artifact -- so a single float can never name a grid point.
+#:
+#: `w6`/`w8`/`w10` are what the 6-, 8- and 10-epoch calibration windows MEASURED
+#: on each environment; `w8` is the calibrated operating point. `x2` is DERIVED
+#: at 2x calibrated, added by D17 pre-outcome and strictly harder.
+D7_GRID_POINTS: tuple[str, ...] = ("w6", "w8", "w10", "x2")
+
+#: The measured values behind those labels, per environment. Kept here so the
+#: rule and the numbers live together; `test_d7_grid_constant_matches_the_shipped_configs`
+#: asserts they still match `experiments/configs/h7_<point>.yaml`.
+#:
+#: This constant previously read `(0.022, 0.026, 0.049)` -- a placeholder from
+#: BEFORE the grid was derived on the real H7 environment, never updated when
+#: D17 signed off the measured four. Nothing consumed it on a real sweep, so it
+#: went stale silently; the test exists so it cannot again.
+D7_DELTA_BASE: dict[str, dict[str, float]] = {
+    "heterogeneous": {
+        "w6": 0.05170263722538948,
+        "w8": 0.07915087416768074,
+        "w10": 0.09278636425733566,
+        "x2": 0.15830174833536148,
+    },
+    "homogeneous": {
+        "w6": 0.0479771513491869,
+        "w8": 0.07691618427634239,
+        "w10": 0.09608590230345726,
+        "x2": 0.15383236855268478,
+    },
+}
+
+#: Backwards-compatible alias for the heterogeneous arm's values, in grid order.
+D7_DELTA_BASE_GRID: tuple[float, ...] = tuple(
+    D7_DELTA_BASE["heterogeneous"][p] for p in D7_GRID_POINTS
+)
 
 
-def d7_sensitivity_verdict(verdicts: dict[float, bool]) -> dict[str, Any]:
-    """Apply D7's pre-registered rule to per-delta_base verdicts.
+def d7_sensitivity_verdict(
+    verdicts: dict[Any, bool], grid: Sequence[Any] = D7_GRID_POINTS
+) -> dict[str, Any]:
+    """Apply D7's pre-registered rule to per-grid-point H7 verdicts.
 
-    ``verdicts`` maps ``delta_base`` to that arm's H7 verdict (True = confirmed).
+    ``verdicts`` maps a grid point (label, or `delta_base` if ``grid`` is given
+    as floats) to that point's H7 verdict (True = confirmed).
 
     The rule, fixed in SPEC Sec. 11 / D7 before any result was seen:
 
-    * identical at all three -> "conclusion stable across a 2x range of
-      delta_base"; the window choice is immaterial;
+    * identical at every point -> "conclusion stable across the grid"; the
+      window choice is immaterial;
     * flips -> **that is the finding**: the benefit is calibration-sensitive,
       reported as a limitation.
 
     It is a function rather than a paragraph so that the rule cannot be quietly
     reinterpreted once the numbers are in, and so "do not pick the window that
-    gives the nicer answer" is enforced rather than promised.
+    gives the nicer answer" is enforced rather than promised. ``grid`` is a
+    parameter so the SET of points can be stated by the caller; the RULE is not
+    a parameter and never becomes one.
     """
     if not verdicts:
         raise ValueError("no verdicts supplied")
-    missing = [d for d in D7_DELTA_BASE_GRID if d not in verdicts]
+    missing = [d for d in grid if d not in verdicts]
     values = set(verdicts.values())
     stable = len(values) == 1
     return {
-        "grid": list(D7_DELTA_BASE_GRID),
-        "verdicts": {str(k): v for k, v in sorted(verdicts.items())},
+        "grid": list(grid),
+        "verdicts": {str(k): v for k, v in sorted(verdicts.items(), key=lambda kv: str(kv[0]))},
         "missing_arms": missing,
         "complete": not missing,
         "stable": stable,
         "conclusion": (
-            "conclusion stable across a 2x range of delta_base; the window "
-            "choice is immaterial"
+            "conclusion stable across the pre-registered delta_base grid; the "
+            "window choice is immaterial"
             if stable
             else "the benefit is CALIBRATION-SENSITIVE: the verdict flips across "
             "the pre-registered delta_base grid. Report as a limitation; do not "

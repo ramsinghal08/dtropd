@@ -94,27 +94,60 @@ strengthening. Worth a sentence, and it is an argument for revisiting whether
 
 ---
 
-## 4. Remark 2 is stronger than stated: the value-variance radius is unusable
-   across scales without re-tuning
+## 4. Remark 2, RESTATED: one premise of its argument is refuted by our own
+   experiment; the conclusion stands on stronger ground
 
-The paper says the value-variance radius has the wrong sign and is
-reward-scale dependent. The empirically demonstrated claim is stronger.
+**The argument as written does not survive; the claim does.** Recorded this way
+deliberately — a premise refuted by the project's own measurement is worth more
+than a conclusion nobody stress-tested.
 
-`delta = delta_base · exp(-kappa · signal)`. With `kappa = 100` — chosen for
-**nonstationarity**, a KL in nats of order `1e-5` — applied to a
-**value-variance** signal of order `3.25`, the radius is
-`exp(-325) ≈ 1e-141`: numerically zero. Under a 10x reward rescale the signal
-becomes `~324`, giving `exp(-32440)`, a hard zero.
+### The refuted premise
 
-So the radius does not merely have the wrong sign; **it saturates to zero and
-stops being a radius at all**, and the `kappa` that works at 1x is off by ~100x
-at 10x because `Var(V)` scales with reward². Every value-variance arm was pinned
-at `delta = 0` regardless of its critic, which is why the degenerate-critic
-pathology could not appear even though the critic was verifiably frozen.
+Remark 2 currently reasons:
 
-**The nonstationarity radius needs no re-tuning under reward rescaling, because
-KL is dimensionless.** That is the sharp form of the claim, and it is an
-argument from units rather than from a benchmark — which makes it stronger.
+> degenerate critic → the agent is unstable → it *should* earn a SMALL radius →
+> but value-variance grants a LARGE one → sign pathology.
+
+**The middle step is false.** Measured (§11): a critic frozen at initialisation
+made the policy **12% MORE stable** (`Delta_healthy = 4.52e-3` nats vs
+`Delta_degenerate = 3.97e-3`). Uninformative advantages give a weaker policy
+gradient and therefore *less* movement between epochs. A broken critic is a
+source of policy **inertia**, not instability — so "the agent is unstable" cannot
+be assumed, and the sign pathology cannot be argued from it.
+
+Same category as H1's "untestable at this horizon": the mechanism did exactly
+what its formula specifies, and it was the hypothesis's assumed causal chain that
+failed.
+
+### The three grounds that survive
+
+**(b) NON-STATIONARITY WITHIN A RUN — the lead argument.** With
+`kappa_valvar = 0.636` derived on an observed `Var(V)` range of `[0.124, 3.270]`,
+the late-training radius is `1.53e-7`. Inverting
+`delta = delta_base·exp(-kappa·Var(V))` gives late-training **`Var(V) = 20.71`,
+6.3× beyond the window the constant was derived on, at UNCHANGED reward scale.**
+
+So a value-variance radius must be re-calibrated **within a single run**. This
+leads because it argues from what the quantity *is* — `Var(V)` is a
+dimensionful, drifting statistic of a function that is still being learned —
+rather than from any benchmark, and it is the version that survives review. A KL
+signal has neither problem: dimensionless, and its scale does not drift with the
+spread of the value function.
+
+**(a) SCALE NON-INVARIANCE.** `Var(V)` scales with reward², so a `kappa`
+calibrated at 1× underflows the radius at 10×: measured `delta = 0.0` exactly,
+a hard zero, against `1.53e-7` at 1×. The nonstationarity radius over the same
+rescale gives ratio **1.099** — invariant, as an argument from units predicts.
+
+**(c) MIS-RANKING, measured.** The degenerate critic's `Var(V)` is 8.11 against
+the healthy critic's 20.71, so **the critic that explains nothing earns a radius
+3037× larger**. This stands as direct evidence of the sign pathology and needs no
+claim about stability to make its point: whatever a degenerate critic does to the
+policy, ranking it as *more* trustworthy than a working one is the defect I1
+exists to prevent.
+
+Ground (c) was unmeasurable before D18 — both arms were pinned at exactly zero by
+the `kappa` units error — so the pathology could only be asserted, never shown.
 
 ---
 
@@ -322,29 +355,11 @@ model (§5).
 
 ---
 
-## 10. A value-variance radius cannot be calibrated ONCE, even at fixed reward
-    scale — `Var(V)` drifts with training
+## 10. (folded into §4)
 
-§4 said the value-variance radius is unusable across reward scales without
-re-tuning. It is worse than that, and the sharper claim came out of fixing it.
-
-With `kappa_valvar = 0.636` derived on an observed `Var(V)` range of
-`[0.124, 3.270]`, the late-training radius is `1.53e-7` — still numerically
-zero. Inverting `delta = delta_base·exp(-kappa·Var(V))` gives late-training
-`Var(V) = 20.71`: **6.3× beyond the window the constant was derived on**, at
-unchanged reward scale.
-
-So a value-variance radius needs re-tuning across **training time** as well as
-across reward scale, because the magnitude of `Var(V)` is non-stationary. A
-KL-valued signal has neither problem: it is dimensionless, and its scale does not
-drift with the spread of the value function. **One calibration cannot serve a
-value-variance radius over a single run** — a stronger objection than the
-reward-scaling one, and again an argument from what the quantity *is* rather than
-from a benchmark.
-
-The I1 pathology is now measurable, which was the point of the fix: the
-degenerate critic's `Var(V)` is 8.11 against the healthy 20.71, so a critic that
-explains nothing earns a radius **3037× larger**.
+The within-run `Var(V)` drift and the 3037× mis-ranking are grounds (b) and (c)
+of the restated Remark 2. Kept as a numbered stub rather than renumbering, so
+references to §4 and §11 elsewhere stay valid.
 
 ---
 
@@ -365,3 +380,38 @@ What failed is the hypothesis's assumed causal chain from critic degeneracy to
 policy instability. Worth a line in the paper because the intuition is natural
 and wrong: **a broken critic is not a source of policy instability; it is a
 source of policy inertia.**
+
+---
+
+## 12. The consensus cost of the trust gate is REAL in the mechanism and ZERO in
+    the outcome
+
+The standing objection to any attenuation gate is that it discards useful peers.
+Measured, on the policy-level arm — where the gate removes 100% of every lying
+neighbour's weight and `f` of each neighbourhood is excluded:
+
+| | `f = 0` | `f = 0.2` | `f = 0.5` |
+|---|---|---|---|
+| honest-edge `D_ij` | ~0.0074 | 0.0349 | 0.0665 |
+| honest-edge `w_ij` | ~0.957 | 0.834 | **0.708** |
+| honest final return | −36.51 | −35.97 | −35.35 |
+| paired Δ return vs `f=0` | — | +0.54 [−1.07, +2.08] | +1.16 [−0.48, +3.11] |
+
+**The mechanism pays and the outcome does not.** Excluding `f` of every
+neighbourhood removes that much consensus pull; the surviving honest agents drift
+~9× further apart, so the gate attenuates *them* too, `w_ij` falling from 0.957 to
+0.708 — a **26% loss of honest consensus weight**, compounding, and entirely
+invisible in return. Both paired CIs span zero, and the point estimates are
+mildly positive.
+
+This is the direct answer to "the gate discards useful peers": at this `beta`,
+in this environment, **it does, and it costs nothing.** Stated with its scope —
+one environment, one `beta`, one adversary — because the honest version of this
+result is not "the cost is zero" but "the cost is invisible in the outcome under
+conditions we can name."
+
+**Consequence for D9.** The consensus-pull cost is a first-class measured
+quantity, and this is the first case where the measurement and the outcome
+disagree. A consensus metric moving by 26% with no detectable effect on return
+means **the consensus metric is not a proxy for performance** and must not be
+reported as though it were. Both belong in the H7 table, separately.

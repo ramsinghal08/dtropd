@@ -427,20 +427,20 @@ def test_bootstrap_ci_and_iqm():
 
 
 def test_d7_rule_reports_stability_when_the_verdict_holds():
-    from dtropd.analysis import D7_DELTA_BASE_GRID, d7_sensitivity_verdict
+    from dtropd.analysis import D7_GRID_POINTS, d7_sensitivity_verdict
 
-    out = d7_sensitivity_verdict({d: True for d in D7_DELTA_BASE_GRID})
+    out = d7_sensitivity_verdict({d: True for d in D7_GRID_POINTS})
     assert out["stable"] is True
     assert out["complete"] is True
     assert out["report_as_limitation"] is False
-    assert "stable across a 2x range" in out["conclusion"]
+    assert "stable across the pre-registered" in out["conclusion"]
 
 
 def test_d7_rule_calls_a_flip_a_finding_not_a_reason_to_reselect():
-    from dtropd.analysis import D7_DELTA_BASE_GRID, d7_sensitivity_verdict
+    from dtropd.analysis import D7_GRID_POINTS, d7_sensitivity_verdict
 
-    flipped = dict.fromkeys(D7_DELTA_BASE_GRID, True)
-    flipped[D7_DELTA_BASE_GRID[-1]] = False
+    flipped = dict.fromkeys(D7_GRID_POINTS, True)
+    flipped[D7_GRID_POINTS[-1]] = False
     out = d7_sensitivity_verdict(flipped)
     assert out["stable"] is False
     assert out["report_as_limitation"] is True
@@ -451,9 +451,64 @@ def test_d7_rule_calls_a_flip_a_finding_not_a_reason_to_reselect():
 def test_d7_rule_flags_an_incomplete_grid():
     from dtropd.analysis import d7_sensitivity_verdict
 
-    out = d7_sensitivity_verdict({0.022: True})
+    out = d7_sensitivity_verdict({"w8": True})
     assert out["complete"] is False
-    assert out["missing_arms"] == [0.026, 0.049]
+    assert out["missing_arms"] == ["w6", "w10", "x2"]
+
+
+def test_d7_grid_constant_matches_the_shipped_configs():
+    """The constant went stale once and nothing noticed.
+
+    `D7_DELTA_BASE_GRID` read `(0.022, 0.026, 0.049)` -- a placeholder from
+    before the grid was measured on the real H7 environment, never updated when
+    D17 signed off the four measured points. Nothing consumed it on a real
+    sweep, so the staleness was invisible. This is the guard: the numbers in the
+    analysis module and the numbers the sweeps will actually run must agree, or
+    the D7 verdict is computed against a grid nobody ran.
+    """
+    from pathlib import Path as _Path
+
+    from dtropd.analysis import D7_DELTA_BASE, D7_GRID_POINTS
+    from dtropd.sweep import load_sweep_config
+
+    configs = _Path(__file__).resolve().parent.parent / "experiments" / "configs"
+    for point in D7_GRID_POINTS:
+        plan = load_sweep_config(configs / f"h7_{point}.yaml")
+        for arm in plan.arms:
+            if arm.algo != "dtropd":
+                continue
+            expected = D7_DELTA_BASE[arm.condition][point]
+            actual = arm.config(plan.base).distill.delta_base
+            assert actual == pytest.approx(expected, rel=1e-12), (
+                f"h7_{point}.yaml arm {arm.name!r} runs delta_base={actual!r} but "
+                f"D7_DELTA_BASE says {expected!r}"
+            )
+
+
+def test_the_interaction_carries_its_own_confidence_interval():
+    """D8's claim is the interaction, so the interaction needs a CI.
+
+    Without one the test reduces to eyeballing two separate CIs, which is not a
+    test of their difference. The pairing must also be by SEED, not by position:
+    a resumed or reordered sweep would otherwise pair one seed's treatment
+    against another's control and report it with a confident interval.
+    """
+    from dtropd.analysis import h7_interaction
+
+    het = {"dtropd": {0: 10.0, 1: 12.0, 2: 11.0}, "ippo": {0: 8.0, 1: 9.0, 2: 9.0}}
+    hom = {"dtropd": {0: 5.0, 1: 6.0, 2: 5.5}, "ippo": {0: 6.0, 1: 7.0, 2: 6.5}}
+    out = h7_interaction(het, hom)
+    assert out["interaction_n_pairs"] == 3
+    assert out["interaction_ci"]["lo"] > 0.0
+    assert out["predicted_sign_flip_observed"] is True
+
+    # Shuffling the seed order must not move anything: the pairing is by key.
+    shuffled = {a: dict(reversed(list(v.items()))) for a, v in het.items()}
+    assert h7_interaction(shuffled, hom)["interaction_ci"] == out["interaction_ci"]
+
+    # A list has no seed labels, so no paired interaction CI is claimed.
+    listed = {a: [v[k] for k in sorted(v)] for a, v in het.items()}
+    assert h7_interaction(listed, hom)["interaction_ci"] == {}
 
 
 def test_h7_interaction_detects_the_predicted_sign_flip():
