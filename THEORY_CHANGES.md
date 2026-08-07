@@ -415,3 +415,61 @@ quantity, and this is the first case where the measurement and the outcome
 disagree. A consensus metric moving by 26% with no detectable effect on return
 means **the consensus metric is not a proxy for performance** and must not be
 reported as though it were. Both belong in the H7 table, separately.
+
+---
+
+## 13. H7 REFUTED: the mechanisms work and do not pay for themselves
+
+The headline hypothesis. 320 cells, four pre-registered `delta_base` points,
+8 arms, 10 paired seeds, all runs verified uncorrupted.
+
+| point | het (D-TrOPD − IPPO) | hom (D-TrOPD − IPPO) | interaction |
+|---|---|---|---|
+| w6  | −7.780 [−10.264, −5.365] | −6.607 [−9.554, −3.386] | −1.173 [−5.292, +2.860] |
+| w8  | −8.708 [−11.429, −6.153] | −8.403 [−11.238, −5.492] | −0.305 [−4.425, +3.872] |
+| w10 | −8.497 [−10.920, −6.233] | −7.414 [−10.272, −4.454] | −1.083 [−5.147, +3.000] |
+| x2  | −8.541 [−11.089, −5.975] | −9.631 [−12.623, −6.459] | +1.090 [−2.890, +4.706] |
+
+**The predicted sign flip requires `het > 0`. It is ≈ −8, with a CI excluding
+zero at every point.** D-TrOPD is not neutral under heterogeneity; it is
+significantly worse than IPPO. The interaction is null (|mean| ≤ 1.2 against a
+~4 half-width), so distillation's cost is *uniform across environments* and
+heterogeneity confers no differential benefit. Stable across the whole grid, so
+this is not a calibration artifact.
+
+### The result that matters more than the verdict
+
+**Every mechanism this paper claims was confirmed, and the composite still loses
+to IPPO.** The reverse-KL direction separates as predicted (H2); the radius is
+scale-invariant where the theory says and pathological where the theory says
+(H3, 3 of 4); `beta` sits two orders inside Prop. 4's bound; the trust gate
+removes 100% of a policy-level adversary's weight and fully protects return,
+where the ungated learner collapses 7×.
+
+The distillation term is not a rounding error either — it is ~24% of the
+parameter update (§1), rising to 34%. It is doing a lot of work, correctly, in
+the wrong direction for return.
+
+**A method can be right in every component and wrong in aggregate.** That is the
+finding, and it is only sayable because the components were measured separately
+rather than inferred from the headline. A paper that reported only H7 would have
+a null; a paper that reports the mechanisms and then H7 has an explanation.
+
+### Where the cost comes from, and what is not yet ruled out
+
+D9's consensus-pull cost — `R(IPPO) − R(D-TrOPD)` on the homogeneous control —
+is +6.6 to +9.6, essentially the whole gap. D9 framed it as the floor a
+heterogeneous benefit must clear. **There is no heterogeneous benefit; the floor
+is the result.**
+
+One scope statement, resting on a measurement taken *before* H7 ran and offered
+as a hypothesis rather than a defence: the H7 environment is a complete graph on
+12 agents, and finding F-1 established that **the trust gate is inert at high
+degree** (`w ≈ 0.96`). D-TrOPD is therefore behaviourally close to NaiveDistill
+here, and the measured costs agree (+8.40 vs +8.19 at the calibrated point). So
+what H7 refutes with certainty is *distillation with an inactive gate*.
+
+A lower-degree test would be a **new experiment** needing its own pre-registered
+rule, and this refutation stands regardless of its outcome. Running environment
+variants until one confirms is the same practice D7's calibration rule forbids,
+and the rule does not stop at calibration windows.

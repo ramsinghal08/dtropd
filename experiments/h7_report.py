@@ -87,6 +87,36 @@ def _confirmed(inter: dict, sign_flip: bool | None) -> bool | None:
     return bool(lo > 0.0 and sign_flip)
 
 
+def _all_arms_vs_ippo(per_arm: dict) -> dict:
+    """Every arm's paired difference against IPPO, in BOTH environments.
+
+    D8's claim is about D-TrOPD, but the sweep also runs MAPPO and HAPPO and
+    reporting only the arm the hypothesis is about would be selective. None of
+    the three has been tuned beyond the shared base config, so the comparison is
+    fair by symmetry -- and that is worth stating rather than leaving implicit,
+    because an unfair comparison is worse than no comparison.
+    """
+    from dtropd.analysis import bootstrap_ci
+
+    out: dict = {}
+    for condition, algos in (per_arm or {}).items():
+        base = (algos.get("ippo") or {}).get("values")
+        if not base:
+            continue
+        row = {}
+        for algo, block in algos.items():
+            if algo == "ippo":
+                continue
+            vals = block.get("values") or []
+            if len(vals) != len(base):
+                row[algo] = {"mean": float("nan"), "ci": {}, "paired": False}
+                continue
+            diffs = np.asarray(vals, dtype=np.float64) - np.asarray(base, dtype=np.float64)
+            row[algo] = {"mean": float(diffs.mean()), "ci": bootstrap_ci(diffs), "paired": True}
+        out[condition] = row
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--root", default="runs", help="directory holding runs/h7_<point>")
@@ -122,6 +152,8 @@ def main(argv: list[str] | None = None) -> int:
         points[point]["confirmed"] = _confirmed(
             points[point]["interaction"], points[point]["sign_flip"]
         )
+        points[point]["per_arm"] = report.get("per_arm", {})
+        points[point]["vs_ippo"] = _all_arms_vs_ippo(report.get("per_arm", {}))
 
     if not points:
         print("no H7 grid points found; run experiments/run_h7_grid.sh", file=sys.stderr)
@@ -147,8 +179,25 @@ def main(argv: list[str] | None = None) -> int:
               f"{(d['interaction'].get('ci') or {}).get('lo', 0) > 0}"
               f"   ->  H7 {verdict}")
         for algo, cost in (d["consensus_pull_cost"] or {}).items():
-            print(f"   D9 consensus-pull cost, homogeneous, {algo}: "
-                  f"{cost.get('cost', float('nan')):+8.3f}")
+            ci = cost.get("ci") or {}
+            print(f"   D9 consensus-pull cost (R_IPPO - R_algo), homogeneous, "
+                  f"{algo:14s} {cost.get('cost', float('nan')):+8.3f}  "
+                  f"[{ci.get('lo', float('nan')):+8.3f}, {ci.get('hi', float('nan')):+8.3f}]")
+
+        # Every arm against IPPO, not just the one the hypothesis is about.
+        for condition in ("heterogeneous", "homogeneous"):
+            row = (d["vs_ippo"] or {}).get(condition) or {}
+            if not row:
+                continue
+            print(f"   all arms vs IPPO, {condition}:")
+            for algo in sorted(row):
+                print(f"      {algo:16s} {_fmt(row[algo])}")
+        arms = (d["per_arm"] or {}).get("heterogeneous") or {}
+        if arms:
+            print("   IQM (SPEC Sec. 7: distributions over means), heterogeneous:")
+            for algo in sorted(arms):
+                print(f"      {algo:16s} IQM {arms[algo].get('iqm', float('nan')):+8.3f}"
+                      f"   n={arms[algo].get('n_seeds')}")
 
     known = {k: v["confirmed"] for k, v in points.items() if v["confirmed"] is not None}
     unknown = [k for k, v in points.items() if v["confirmed"] is None]

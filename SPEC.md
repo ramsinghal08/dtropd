@@ -1396,3 +1396,86 @@ NaiveDistill on the homogeneous control.
 **The verdict is reported whatever it is.** A refuted H7 at this level of rigour
 is a publishable result, and the paper carries seven confirmed mechanism
 findings that do not depend on it.
+
+---
+
+## 23. H7 — REFUTED — 2026-08-07
+
+**320/320 cells, 4 grid points × 8 arms × 10 paired seeds. All clean
+(`check_runs.py`: 480 run directories, no corruption).**
+
+| point | het (D-TrOPD − IPPO) | hom (D-TrOPD − IPPO) | INTERACTION | verdict |
+|---|---|---|---|---|
+| w6  | −7.780 [−10.264, −5.365] | −6.607 [−9.554, −3.386] | −1.173 [−5.292, +2.860] | not confirmed |
+| w8  | −8.708 [−11.429, −6.153] | −8.403 [−11.238, −5.492] | −0.305 [−4.425, +3.872] | not confirmed |
+| w10 | −8.497 [−10.920, −6.233] | −7.414 [−10.272, −4.454] | −1.083 [−5.147, +3.000] | not confirmed |
+| x2  | −8.541 [−11.089, −5.975] | −9.631 [−12.623, −6.459] | +1.090 [−2.890, +4.706] | not confirmed |
+
+**D7 verdict: STABLE.** Identical at all four points, so the conclusion does not
+depend on the calibration window and the refutation is not a calibration
+artifact. Per D7 that is reported as stability, not as a limitation.
+
+### What was found, stated as the numbers say it
+
+1. **The predicted sign flip did not occur at any grid point.** It requires
+   `het > 0`. Measured `het ≈ −8`, with a CI excluding zero at every point.
+   D-TrOPD is not neutral under heterogeneity — it is **significantly worse than
+   IPPO**, by about 8 return.
+2. **The interaction is null.** |mean| ≤ 1.2 against a CI half-width of ~4, at
+   every point. Distillation's cost is **uniform across the two environments**;
+   heterogeneity confers no differential benefit.
+3. **The D9 consensus-pull cost is large and it is not recovered.** `R(IPPO) −
+   R(D-TrOPD)` on the homogeneous control runs +6.6 to +9.6 depending on the
+   grid point, against NaiveDistill's +8.19. D9 framed this cost as the floor a
+   heterogeneous benefit must clear. There is no heterogeneous benefit to clear
+   it.
+
+**H7 is REFUTED.** Not weakly, not pending more seeds: the effect has the wrong
+sign, at every point of a pre-registered grid, with 10 paired seeds and CIs that
+exclude zero.
+
+### A scope statement, offered as a hypothesis and not as a defence
+
+The H7 environment is a **complete graph on 12 agents**, i.e. degree 11. Finding
+F-1, measured *before* H7 ran, is that the trust gate is **inert at high degree**
+— `w_ij ≈ 0.96` against a calibrated radius, because neighbours on a complete
+graph stay close and there is nothing for the gate to attenuate. H7's own logs
+show it again throughout.
+
+So H7 tested D-TrOPD in a regime where its distinguishing mechanism is
+**inactive**, and the arm is behaviourally close to NaiveDistill. The measured
+costs agree: D-TrOPD +8.40 vs NaiveDistill +8.19 at the calibrated point.
+
+**This does not soften the verdict, and it must not be used to.** Three things
+follow, in this order:
+
+* **H7 as pre-registered is refuted, and that is what is reported.** The
+  environment was fixed in D2/D8 long before the result.
+* A lower-degree H7 would be a **new experiment**, not a re-analysis. If it is
+  run, it needs its own pre-registered decision rule, and **this refutation is
+  reported regardless of what it finds**. Running variants until one confirms,
+  and publishing that one, is precisely the practice D7's rule exists to
+  prevent — the rule applies to environments exactly as it applies to
+  calibration windows.
+* The scope statement rests on a measurement taken before the result, which is
+  the only reason it is admissible at all.
+
+### Fair comparison
+
+MAPPO and HAPPO ran in every heterogeneous cell. **None of the five arms has
+been tuned beyond the shared base config**, so the comparison is fair by
+symmetry rather than by matched search — stated explicitly because an unfair
+comparison is worse than no comparison. `h7_report.py` now prints every arm's
+paired difference against IPPO in both environments, and per-arm IQM, so the
+arm the hypothesis is about is not the only one reported.
+
+### What survives
+
+Seven confirmed mechanism findings do not depend on H7: Prop. 3, Prop. 4,
+Remark 2's invariance half, the threat-model taxonomy, H2's KL-direction
+separation, H3 (3 of 4 criteria), and the policy-level gate result — where the
+gate removes 100% of a lying neighbour's weight and the ungated learner
+collapses by 7× while the gated one does not move.
+
+The honest summary of this project is that **the mechanisms work as specified
+and do not, in this environment, produce a net return benefit.**
