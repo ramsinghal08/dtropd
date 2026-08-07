@@ -53,6 +53,12 @@ class TrainResult:
             "algo": self.algo,
             "epochs": self.epochs,
             "final_return": self.final_eval.get("return_mean"),
+            # Equal to final_return when nothing is Byzantine, so a sweep can
+            # read one key along the whole f axis without comparing an
+            # honest-only number against an all-agent one.
+            "final_return_honest": self.final_eval.get(
+                "return_mean_honest", self.final_eval.get("return_mean")
+            ),
             "random_return": self.random_eval.get("return_mean"),
             "improvement": (
                 self.final_eval.get("return_mean", float("nan"))
@@ -256,12 +262,27 @@ def train(
     if final_eval is None:  # pragma: no cover - only if total_epochs == 0
         final_eval = evaluate_policy(algo, cfg.env, n_episodes=cfg.train.eval_episodes, seed=seed)
 
+    # H6's headline is the HONEST agents' return. The environment has always
+    # exposed per-agent returns for this, and the rollout metrics have always
+    # split them -- but the EVALUATION path dropped them, so `final_return`, the
+    # number that reaches every manifest, report and curve, was the all-agent
+    # mean. Recorded alongside rather than replacing it: `final_return` keeps its
+    # meaning, and anything H6 must not fold saboteurs into reads the honest key.
+    final_eval_dict = final_eval.to_dict()
+    byzantine = sorted(getattr(algo, "byzantine", []) or [])
+    honest = [i for i in range(cfg.env.n_agents) if i not in set(byzantine)]
+    final_eval_dict["return_mean_honest"] = (
+        final_eval.subset_return(honest) if byzantine else final_eval.return_mean
+    )
+    if byzantine:
+        final_eval_dict["return_mean_byzantine"] = final_eval.subset_return(byzantine)
+
     result = TrainResult(
         run_dir=run_dir,
         seed=seed,
         algo=cfg.train.algo,
         epochs=cfg.train.total_epochs,
-        final_eval=final_eval.to_dict(),
+        final_eval=final_eval_dict,
         random_eval=random_eval.to_dict(),
         best_return=best_return,
         final_explained_variance=last_ev,

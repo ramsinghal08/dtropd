@@ -1210,3 +1210,43 @@ It reported "the gate ATTENUATES" for any paired CI excluding zero. On the clean
 false of the claim. The verdict now keys on the **fraction of honest weight
 removed** and reports anything under 5% as `NEGLIGIBLE`, separated from zero or
 not.
+
+### The honest-only return was never wired into the EVALUATION path
+
+Found when `h6_curve.py` refused the policy-level manifest. Three defects, one
+of them consequential.
+
+**1. `final_return` is the ALL-AGENT mean, and the H6 curve labelled it
+"final return (honest agents)".** `env.py` has always exposed per-agent returns
+in the episode info — with a comment saying it exists so H6 can report the
+honest subset — and the *rollout* metrics have always split them
+(`episode_return_mean_honest`). The **evaluation** path dropped them, so the
+number reaching every manifest, report and curve folded the saboteurs in. That
+number moves with `f` even under a perfect defence, which is precisely what SPEC
+Sec. 14 says the H6 headline must not do.
+
+Fixed: `EvalResult.agent_return_means` + `subset_return()`; `train` records
+`return_mean_honest` (and `return_mean_byzantine`), and `summary()` exposes
+`final_return_honest`, **equal to `final_return` when nothing is Byzantine** so
+one key can be read along the whole `f` axis. `final_return` keeps its old
+meaning rather than being redefined under existing consumers.
+
+**2. A resumed sweep's manifest carried no return for skipped cells.** Only
+freshly-run cells got `final_return`, so any consumer reading the manifest
+analysed *the cells that happened to run this time*. A resumed sweep is the
+normal case. `_returns_from_disk` reads them back from `summary.json`.
+
+**3. `h6_curve.py` parsed `f` out of arm names** with a regex matching only
+`h6_byzantine.yaml`'s `<adversary>_<aggregator>_f<NN>` convention. Every other
+H6 sweep fell through it and the script reported "no H6 arms found in that
+manifest" — a naming convention used as a data model. It now reads `f`, level,
+mode and aggregation from each run's recorded config, labels series by whatever
+actually varies, and **warns loudly** when only the all-agent return is
+available instead of silently mislabelling the axis.
+
+Also: `analyze_hypotheses.py --require h3` died with `KeyError: 'h3'` because the
+keys are uppercase. Case-insensitive, with a named error for unknown keys.
+
+**Prediction (3) for the policy-level arm cannot be read off the existing runs**
+— they predate the honest split. It needs `runs/h6_policy_level` re-run, which
+also gets it the corrected metric everywhere else.

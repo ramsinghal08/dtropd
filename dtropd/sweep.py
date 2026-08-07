@@ -484,7 +484,38 @@ def _run_cell(job: tuple[Any, int, Any, str, Path, str]) -> dict[str, Any]:
     meta["config_fingerprint"] = fingerprint
     meta["sweep"] = {"name": sweep_name, "arm": arm_name}
     meta_path.write_text(json.dumps(meta, indent=2, default=str))
-    return {"final_return": result.final_eval["return_mean"]}
+    return _cell_returns(result.summary())
+
+
+#: What a manifest entry records about a cell's outcome. `final_return` is the
+#: ALL-AGENT mean and keeps that meaning; `final_return_honest` excludes the
+#: Byzantine agents and equals it when there are none, so a consumer can read one
+#: key along the whole `f` axis without comparing an honest-only number against
+#: an all-agent one at `f = 0`.
+_RETURN_KEYS = ("final_return", "final_return_honest")
+
+
+def _cell_returns(summary: dict[str, Any]) -> dict[str, Any]:
+    out = {"final_return": summary.get("final_return")}
+    out["final_return_honest"] = summary.get("final_return_honest", out["final_return"])
+    return out
+
+
+def _returns_from_disk(run_dir: Path) -> dict[str, Any]:
+    """A SKIPPED cell's outcome, read back from the run it is skipping.
+
+    Without this a resumed sweep's manifest carries no return at all for the
+    cells it skipped, so any consumer reading the manifest silently analyses
+    only the cells that happened to run this time -- and a resumed sweep is the
+    normal case, not the exception.
+    """
+    summary = run_dir / "summary.json"
+    if not summary.exists():
+        return {}
+    try:
+        return _cell_returns(json.loads(summary.read_text()))
+    except json.JSONDecodeError:  # pragma: no cover - a truncated write
+        return {}
 
 
 def run_sweep(
@@ -585,17 +616,18 @@ def run_sweep(
         if p["skip"]:
             entry["status"] = "skipped (already complete)"
             skipped += 1
+            entry.update(_returns_from_disk(p["run_dir"]))
             logger.info("skip %s seed %d (already complete)", p["arm"].name, p["seed"])
         elif id(p) in results:
             entry["status"] = "completed"
-            entry["final_return"] = results[id(p)]["final_return"]
+            entry.update({k: results[id(p)].get(k) for k in _RETURN_KEYS})
         else:
             logger.info("run  %s seed %d", p["arm"].name, p["seed"])
             out = _run_cell(
                 (p["arm"].name, p["seed"], p["cfg"], p["fingerprint"], p["run_dir"], plan.name)
             )
             entry["status"] = "completed"
-            entry["final_return"] = out["final_return"]
+            entry.update({k: out.get(k) for k in _RETURN_KEYS})
         entries.append(entry)
         # Written incrementally so a killed sweep still has an accurate manifest.
         manifest_path.write_text(

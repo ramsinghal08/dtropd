@@ -532,3 +532,48 @@ def test_motor_failure_zeroes_the_agents_actions():
     for i in failed:
         assert not np.allclose(hpos[i], bpos[i]), f"agent {i} moved as if healthy"
     assert broken.motor_failures == failed
+
+
+# --------------------------------------------------------------------------- #
+# H6's headline is the HONEST agents' return -- at EVALUATION time too
+# --------------------------------------------------------------------------- #
+
+
+def test_evaluation_records_the_honest_return_not_only_the_team_mean(tmp_path):
+    """The plumbing existed at both ends and was never connected in the middle.
+
+    The environment has always exposed per-agent returns for this (env.py, the
+    "episode"/"agent_returns" key, with a comment saying so) and the ROLLOUT
+    metrics have always split them. The EVALUATION path dropped them -- so
+    `final_return`, the number that reaches every manifest, report and curve,
+    was the all-agent mean, and `h6_curve.py` labelled that axis "final return
+    (honest agents)".
+    """
+    from dtropd.train import train
+
+    cfg = stress_config(byzantine_fraction=0.25, byzantine_mode="adaptive")
+    cfg.train.total_epochs = 1
+    cfg.train.eval_episodes = 4
+    result = train(cfg, seed=1, out_dir=tmp_path / "run", progress=False)
+
+    summary = result.summary()
+    assert "final_return_honest" in summary
+    assert summary["final_return_honest"] != summary["final_return"], (
+        "the honest mean equals the team mean, so the split did not happen"
+    )
+    assert result.final_eval["return_mean_byzantine"] != pytest.approx(
+        result.final_eval["return_mean_honest"]
+    )
+
+
+def test_the_honest_return_is_present_at_f0_so_the_axis_is_comparable(tmp_path):
+    """With no Byzantine agents the honest mean IS the mean. If the key were
+    absent at f=0, a curve over f would compare an honest-only number against an
+    all-agent one at its own baseline."""
+    from dtropd.train import train
+
+    cfg = stress_config()
+    cfg.train.total_epochs = 1
+    cfg.train.eval_episodes = 4
+    summary = train(cfg, seed=1, out_dir=tmp_path / "run", progress=False).summary()
+    assert summary["final_return_honest"] == pytest.approx(summary["final_return"], rel=1e-12)

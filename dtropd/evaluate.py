@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Sequence
 
 import numpy as np
 import torch
@@ -27,6 +27,21 @@ class EvalResult:
     length_mean: float
     zone_returns: dict[str, float] = field(default_factory=dict)
     per_episode_returns: list[float] = field(default_factory=list)
+    #: Mean return of EACH agent across the evaluation episodes. Kept so a
+    #: SUBSET can be averaged: H6's headline is the honest agents' return, and
+    #: folding the saboteurs in measures the attack's self-harm alongside the
+    #: defence's success -- a number that moves with `f` even when the defence
+    #: is perfect. The environment has always exposed this (env.py, "episode"/
+    #: "agent_returns"); it was the evaluation path that dropped it.
+    agent_return_means: list[float] = field(default_factory=list)
+
+    def subset_return(self, agents: Sequence[int]) -> float:
+        """Mean return over ``agents`` only."""
+        if not self.agent_return_means:
+            return float("nan")
+        if not agents:
+            return float("nan")
+        return float(np.mean([self.agent_return_means[i] for i in agents]))
 
     def to_dict(self, prefix: str = "") -> dict[str, Any]:
         out = {
@@ -47,10 +62,14 @@ def _summarise(
     captures: list[float],
     lengths: list[int],
     zone_returns: list[np.ndarray],
+    agent_returns: list[np.ndarray] | None = None,
 ) -> EvalResult:
     arr = np.asarray(returns, dtype=np.float64)
     n = max(1, len(arr))
     zr = np.stack(zone_returns).mean(axis=0) if zone_returns else np.zeros(len(ZoneKind.NAMES))
+    per_agent = (
+        np.stack(agent_returns).mean(axis=0).tolist() if agent_returns else []
+    )
     return EvalResult(
         episodes=len(returns),
         return_mean=float(arr.mean()) if len(arr) else float("nan"),
@@ -60,6 +79,7 @@ def _summarise(
         length_mean=float(np.mean(lengths)) if lengths else float("nan"),
         zone_returns={name: float(zr[i]) for i, name in enumerate(ZoneKind.NAMES)},
         per_episode_returns=[float(x) for x in returns],
+        agent_return_means=[float(x) for x in per_agent],
     )
 
 
@@ -77,6 +97,7 @@ def _run_episodes(
     captures: list[float] = []
     lengths: list[int] = []
     zone_returns: list[np.ndarray] = []
+    agent_returns: list[np.ndarray] = []
 
     max_steps = env_cfg.max_cycles * (n_episodes // num_envs + 2)
     for _ in range(max_steps):
@@ -92,8 +113,10 @@ def _run_episodes(
                 captures.append(ep["captures"])
                 lengths.append(ep["length"])
                 zone_returns.append(ep["zone_returns"])
+                if "agent_returns" in ep:
+                    agent_returns.append(np.asarray(ep["agent_returns"], dtype=np.float64))
     vec.close()
-    return _summarise(returns, captures, lengths, zone_returns)
+    return _summarise(returns, captures, lengths, zone_returns, agent_returns)
 
 
 def evaluate_policy(

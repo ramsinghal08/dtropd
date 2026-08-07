@@ -60,6 +60,19 @@ def main(argv: list[str] | None = None) -> int:
         print(f"no metrics records in {metrics_path}", file=sys.stderr)
         return 2
 
+    # `--require h3` used to die with `KeyError: 'h3'` three frames down. The
+    # keys are "H1".."H7"; asking for a hypothesis by the name it is called
+    # everywhere else in the project should not be a stack trace.
+    required = [k.upper() for k in args.require]
+    unknown = [k for k in required if k not in HYPOTHESES]
+    if unknown:
+        print(
+            f"unknown hypothes{'is' if len(unknown) == 1 else 'es'} {unknown}; "
+            f"expected any of {list(HYPOTHESES)} (case-insensitive)",
+            file=sys.stderr,
+        )
+        return 2
+
     results = analyze_run(records, metadata)
     report = {
         "run": str(run_dir),
@@ -70,7 +83,7 @@ def main(argv: list[str] | None = None) -> int:
         "algo": metadata.get("algo"),
         "hypotheses": {k: v.to_dict() for k, v in results.items()},
     }
-    uncomputable = [k for k in args.require if not results[k].computable]
+    uncomputable = [k for k in required if not results[k].computable]
     report["all_required_computable"] = not uncomputable
     report["uncomputable"] = uncomputable
 
