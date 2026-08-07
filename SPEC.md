@@ -1536,3 +1536,134 @@ Not "D-TrOPD did not beat IPPO." The measured claim is:
 > **Every mechanism is confirmed; the trust gate contributes nothing to return;
 > and distillation itself costs ~8 return in this environment, uniformly across
 > heterogeneity, while a trust-region baseline on the same budget ties IPPO.**
+
+---
+
+## 24. Result set FROZEN — 2026-08-07
+
+### D21 — The locked H7 result statement
+
+Recorded verbatim as the paper's lead claim. Not to be reworded by a later run.
+
+> **Every mechanism is confirmed; the trust gate contributes nothing to return;
+> and distillation itself costs ~8 uniformly across heterogeneity — while a
+> trust-region baseline (HAPPO) on the same budget ties IPPO.**
+
+Supported by three facts, each paired, 10 seeds, four pre-registered grid points:
+
+**(a) HAPPO +0.148 [−1.847, +2.002] vs IPPO.** The environment supports
+competitive performance, so the deficit is attributable to distillation and not
+to the task, the horizon, or the shared untuned hyperparameters. **This control
+is what makes the whole result interpretable** — without it, `−8` is
+indistinguishable from "the environment is hard for everything".
+
+**(b) D-TrOPD − NaiveDistill: all 8 contrasts span zero, |mean| ≤ 1.6** against
+deficits of ~8. The trust gate is the entire difference between the two
+algorithms and is worth nothing in return, in either environment, at every grid
+point.
+
+**(c) D-TrOPD loses to IPPO on 79/80 paired seed comparisons** — 10/10 seeds in
+seven of the eight environment × grid-point cells, 9/10 in the eighth. The
+refutation is unanimous, not marginal.
+
+*Secondary observation, worth a line in the paper:* **MAPPO −3.500 [−5.184,
+−1.713] vs IPPO.** A centralised critic is significantly **worse** than
+independent learning under heterogeneity.
+
+### D22 — The D7 sensitivity verdict, stated
+
+Applying D7's rule, fixed before any result was seen:
+
+> **The verdict is identical at all four grid points. Conclusion stable across
+> the calibration grid; the window choice is immaterial.**
+
+* `verdicts: {w6: false, w8: false, w10: false, x2: false}`, `complete: true`,
+  `stable: true`, `report_as_limitation: false`.
+* **The widening clause did not fire.** D7's alternative branch — "the verdict
+  flips, therefore the benefit is calibration-sensitive, report as a limitation"
+  — is not invoked, because nothing flipped.
+* **No grid point was selected for its answer.** All four were run, all four are
+  reported, and the rule was executed by `d7_sensitivity_verdict` rather than
+  applied by hand.
+
+This is the favourable direction of D7's rule and it costs the result nothing:
+stability here means the refutation cannot be attributed to a calibration
+choice.
+
+### D23 — The ACTIVE-GATE experiment: PRE-REGISTERED, NOT RUN
+
+Dated 2026-08-07, written **before** any degree sweep exists.
+
+**Why it is well-posed now.** At degree 11 the gate is inactive by construction
+(`w_ij ≈ 0.96`), so D-TrOPD ≈ NaiveDistill and the gate had no opportunity to
+act — measured two independent ways (F-1's `w_ij`, and D21(b)'s return
+contrast). Lower degree makes `w_ij` vary.
+
+**Design.** Fixed-degree topology at fixed `N = 12`, degrees `{11, 8, 6, 4, 2}`.
+Arms: D-TrOPD, NaiveDistill, IPPO. Paired seeds, ≥10. Calibration per D6, one
+artifact per environment configuration.
+
+**The degrees are not guessed.** They are chosen from the policy-level arm's
+honest-edge data, where the gate excluding a fraction `f` of each neighbourhood
+gives an effective degree — measured `(11, 0.957)`, `(8.8, 0.834)`,
+`(5.5, 0.708)`, a near-linear `w ≈ 0.0447·deg + 0.456` (R² = 0.988). Extrapolated:
+
+| degree | predicted mean `w_ij` |
+|---|---|
+| 11 | 0.95 |
+| 8 | 0.81 |
+| 6 | 0.72 |
+| 4 | 0.63 |
+| 2 | 0.55 |
+
+Gating a neighbour to `w = 0` is not identical to its absence from the graph, so
+these are a calibrated expectation and not a prediction of the sweep's own
+`w_ij`. They are recorded so the grid cannot later be described as chosen for
+its answer.
+
+**Decision rule, pre-registered:**
+
+* The **gate is vindicated** if `D-TrOPD − NaiveDistill` becomes reliably
+  positive as degree falls (CI excluding zero at the low-degree points).
+* **Distillation's cost is unaffected by gating** if the `D-TrOPD − IPPO` deficit
+  persists at every degree.
+
+**The ceiling, stated in advance.** Gating can only **reduce** how much
+distillation occurs. The most optimistic realistic outcome is therefore
+D-TrOPD converging toward IPPO **from below**, not exceeding it. **This
+experiment can rescue the GATE's value; it cannot rescue distillation's ~8 cost,
+which NaiveDistill pays too.** Writing that down now removes the temptation to
+present a smaller deficit as a positive result.
+
+**The H7 refutation is reported UNCHANGED regardless of this experiment's
+outcome.**
+
+*No config is shipped for it.* The parameters above are complete enough to
+implement, and leaving a runnable file in the tree would make it one command to
+extend a frozen result set. Writing the config is the first step of running it,
+and that step needs a decision, not a `git pull`.
+
+### D24 — The result set is FROZEN
+
+The experimental programme is closed as of tag `results-frozen-2026-08-07`.
+
+* **No arm is added to the reported result set without a dated
+  pre-registration**, written before the run, in the manner of D17, D19 and D23.
+* **Nothing already reported is revised by a later run.** A later experiment may
+  add scope; it may not retroactively change a recorded verdict.
+* **Next work is writing, not running.**
+
+**The reported set, complete:**
+
+| result | verdict |
+|---|---|
+| H1 chattering | untestable at this horizon (edges never cross the boundary) |
+| H2 KL direction | **CONFIRMED** — clean separation |
+| H3 radius | **3 of 4 criteria confirmed**; the miss is a refuted premise (§11) |
+| H4 / H5 scale | measured; D15's asymmetric cap documented |
+| H6 gradient-level | correctly scoped to the aggregator (D19); gate blind by construction, 0.3% |
+| H6(c) policy-level | **CONFIRMED on all three predictions** — `w_ij = 0`, 100% weight removed, ungated learner collapses 7× |
+| H7 headline | **REFUTED**, stable across the D7 grid, unanimous on 79/80 seeds |
+| Prop. 3 | confirmed |
+| Prop. 4 | **empirically validated**, ~100× margin |
+| Remark 2 | restated; one premise refuted, conclusion on stronger ground (§4) |

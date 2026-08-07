@@ -506,3 +506,55 @@ A lower-degree test would be a **new experiment** needing its own pre-registered
 rule, and this refutation stands regardless of its outcome. Running environment
 variants until one confirms is the same practice D7's calibration rule forbids,
 and the rule does not stop at calibration windows.
+
+---
+
+## 14. THE LOCKED RESULT STATEMENT
+
+The paper's lead claim, recorded verbatim and not to be reworded by a later run
+(SPEC D21):
+
+> **Every mechanism is confirmed; the trust gate contributes nothing to return;
+> and distillation itself costs ~8 uniformly across heterogeneity — while a
+> trust-region baseline (HAPPO) on the same budget ties IPPO.**
+
+**(a) HAPPO +0.148 [−1.847, +2.002] vs IPPO.** The environment supports
+competitive performance, so the deficit belongs to distillation and not to the
+task, the horizon, or the shared untuned hyperparameters. **This control is what
+makes the result interpretable at all** — without it, `−8` cannot be told apart
+from "the environment is hard for everything", and the paper would have a null
+instead of a finding.
+
+**(b) D-TrOPD − NaiveDistill: all 8 contrasts span zero, |mean| ≤ 1.6** against
+deficits of ~8. The gate is the entire difference between the two algorithms and
+is worth nothing in return, in either environment, at every grid point.
+
+**(c) D-TrOPD loses to IPPO on 79 of 80 paired seed comparisons.** Unanimous,
+not marginal.
+
+*Secondary, worth a line:* **MAPPO −3.500 [−5.184, −1.713] vs IPPO** — a
+centralised critic is significantly **worse** than independent learning under
+heterogeneity.
+
+### The D7 sensitivity verdict
+
+Identical at all four grid points: **conclusion stable across the calibration
+grid; the window choice is immaterial.** The widening clause did not fire, and
+no grid point was selected for its answer — all four were run, all four are
+reported, and the rule was executed in code rather than applied by hand.
+
+Stability here costs the result nothing and buys something: the refutation
+cannot be attributed to a calibration choice.
+
+### What the whole programme demonstrates
+
+Nine of the ten recorded results are confirmations, refined claims, or refuted
+premises found by our own measurements. The tenth — the headline — is a
+refutation. **The mechanisms are right and the composite loses**, and that
+sentence is only available because every mechanism was measured separately
+instead of being inferred from the headline.
+
+Three of the refuted things were mine, one was a premise of the paper's own
+Remark 2, and one was an experiment scoped to the wrong threat model. Each is
+recorded with the measurement that killed it. A programme that reported only
+what worked would have had less to say and more to defend.
