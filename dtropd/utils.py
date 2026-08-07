@@ -124,14 +124,37 @@ class MetricsWriter:
     ``<out_dir>/metrics.jsonl``  -- one JSON object per logged epoch
     """
 
-    def __init__(self, out_dir: str | Path, metadata: dict[str, Any] | None = None):
+    def __init__(
+        self,
+        out_dir: str | Path,
+        metadata: dict[str, Any] | None = None,
+        *,
+        append: bool = False,
+    ):
+        """Open the metrics stream for one run.
+
+        TRUNCATES BY DEFAULT, and that default is load-bearing. This used to open
+        in append mode, which silently corrupted every resumed sweep: a cell
+        killed mid-write leaves a partial line, ``_is_complete`` correctly
+        re-runs it, and the re-run then APPENDED to the dead attempt. The result
+        was one file holding two runs -- a malformed line where they met, and
+        duplicate epochs on either side of it. The malformed line raises, so it
+        gets noticed; the duplicate epochs do not, and any analysis taking
+        ``records[-10:]`` or a per-epoch series would quietly mix two runs.
+
+        Three cells of the completed H6 sweep were corrupted this way
+        (``adaptive_trim_f10_seed{3,4,5}``, 56-59 duplicated epochs each).
+
+        ``append=True`` exists only for a caller that genuinely continues an
+        existing stream. Nothing does today.
+        """
         self.out_dir = Path(out_dir)
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.metrics_path = self.out_dir / "metrics.jsonl"
         self.metadata_path = self.out_dir / "metadata.json"
         if metadata is not None:
             self.metadata_path.write_text(json.dumps(metadata, indent=2, default=_json_default))
-        self._fh = self.metrics_path.open("a", buffering=1)
+        self._fh = self.metrics_path.open("a" if append else "w", buffering=1)
 
     def write(self, record: dict[str, Any]) -> None:
         self._fh.write(json.dumps(record, default=_json_default) + "\n")
@@ -161,14 +184,55 @@ def _json_default(obj: Any) -> Any:
     return str(obj)
 
 
-def read_metrics(path: str | Path) -> list[dict[str, Any]]:
-    """Read a JSONL metrics file back into a list of records."""
+class CorruptMetricsError(RuntimeError):
+    """A metrics file that cannot be trusted, named rather than guessed at."""
+
+
+def read_metrics(path: str | Path, *, strict: bool = True) -> list[dict[str, Any]]:
+    """Read a JSONL metrics file back into a list of records.
+
+    Refuses a corrupted file loudly. Both failure modes below come from one
+    cause -- a killed cell whose file was later appended to (see
+    :class:`MetricsWriter`) -- and only the first is self-announcing:
+
+    * **a malformed line** raises where it is, with the file and line number,
+      instead of a bare ``JSONDecodeError`` from three frames down;
+    * **duplicate epochs** raise too. This is the dangerous one. Two runs
+      concatenated parse perfectly, and every downstream summary --
+      ``records[-10:]``, any per-epoch series -- silently averages across them.
+
+    Neither is repaired here. A partial line could be dropped and the file would
+    still hold two runs' data; the only correct fix is to re-run the cell.
+    """
+    path = Path(path)
     records = []
-    with Path(path).open() as fh:
-        for line in fh:
+    with path.open() as fh:
+        for lineno, line in enumerate(fh, start=1):
             line = line.strip()
-            if line:
+            if not line:
+                continue
+            try:
                 records.append(json.loads(line))
+            except json.JSONDecodeError as exc:
+                if not strict:
+                    continue
+                raise CorruptMetricsError(
+                    f"{path}:{lineno} is not valid JSON ({exc}). A cell that was "
+                    "killed mid-write and then resumed produces exactly this. The "
+                    "file holds a partial run; delete this run directory and let "
+                    "the sweep re-run the cell."
+                ) from exc
+
+    if strict:
+        epochs = [r["epoch"] for r in records if "epoch" in r]
+        if len(epochs) != len(set(epochs)):
+            duplicated = sorted({e for e in epochs if epochs.count(e) > 1})
+            raise CorruptMetricsError(
+                f"{path} logs {len(epochs) - len(set(epochs))} DUPLICATE epochs "
+                f"(e.g. {duplicated[:5]}): it contains more than one run. Any "
+                "summary over these records averages across both. Delete this run "
+                "directory and let the sweep re-run the cell."
+            )
     return records
 
 

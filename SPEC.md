@@ -1127,3 +1127,86 @@ protects **return**. The informative follow-up, not run here, is the **stealth
 threshold**: how close to `delta_i` an adversary can sit and still be admitted,
 the policy-level analogue of what `adaptive` does to trimming. `D_ij` is logged
 per edge, so it is a scope change rather than a code change.
+
+---
+
+## 20. H6(c) results, and a data-integrity defect — 2026-08-07
+
+### H6(c) — POLICY-LEVEL ADVERSARY: predictions (1) and (2) CONFIRMED
+
+60/60 cells, 10 paired seeds, plain-sum aggregation, `δ_base = 0.074296`,
+`γ = 10.674` (calibrated on the unstressed `dtropd_f00` arm).
+
+| `f` | `D_ij` byz | `D_ij` honest | `w_ij` byz | `w_ij` honest | paired Δ`w` |
+|---|---|---|---|---|---|
+| 0.2 | 3.825 | 0.0349 | **0.00000** | 0.8337 | −0.8337 [−0.8352, −0.8323] |
+| 0.5 | 3.875 | 0.0665 | **0.00000** | 0.7077 | −0.7077 [−0.7137, −0.7011] |
+
+The gate excludes a lying neighbour **completely** — `w_ij = 0` to five decimals,
+100% of the weight removed, on every seed. Against the gradient-level adversary
+the same measurement gives 0.3%. The contrast between the two threat models is
+**a factor of ~300**, and it is the point of D19.
+
+Predictions (1) and (2) are confirmed. As the config header said before the run,
+both largely follow from the attenuation formula once the offset is fixed; what
+they establish is that the wiring is real. **Prediction (3), the return curve,
+is still outstanding.**
+
+### An unpredicted second-order cost: protection thins the neighbourhood
+
+Not predicted, and it is the more interesting number.
+
+| | `f = 0` | `f = 0.2` | `f = 0.5` |
+|---|---|---|---|
+| honest-edge `D_ij` | ~0.0074 | 0.0349 | 0.0665 |
+| honest-edge `w_ij` | ~0.957 | 0.834 | 0.708 |
+
+**Honest agents diverge from each other ~9× more at `f = 0.5` than unattacked**,
+and the gate then attenuates *them* too. The mechanism is direct: excluding a
+fraction `f` of every neighbourhood removes that much consensus pull, the
+surviving honest agents drift further apart, their own `D_ij` rises, and their
+`w_ij` falls — which removes still more pull.
+
+So the gate's defence is not free, and its cost is **not** the excluded edges. It
+is the compounding loss of consensus among the agents that remain. This is a
+paper-relevant result and it is measured, not argued.
+
+### A data-integrity defect that had already corrupted committed results
+
+`MetricsWriter` opened `metrics.jsonl` in **append** mode. A cell killed
+mid-write leaves a partial line; `_is_complete` correctly re-ran the cell, and
+the re-run then **appended to the dead attempt**. One file, two runs:
+
+* a **malformed line** where they meet — self-announcing, and how this was found
+  (it crashed the `h6_manipulation` report and `gate_split.py`);
+* **duplicate epochs** on either side — silent. The file parses, and every
+  summary over it (`records[-10:]`, any per-epoch series) averages two runs.
+
+**Three cells of the completed H6 sweep were already corrupted this way**:
+`adaptive_trim_f10_seed{3,4,5}`, with 59/56/7 duplicated epochs. Those are among
+the cells the gradient-level gate-blindness number was computed on.
+
+**Effect on that finding: none material.** The Byzantine-vs-honest split is made
+*within* each record, so duplicated epochs reweight the epoch axis rather than
+mixing the compared groups. On the 3 clean `f = 0.1` cells the difference is
+**−0.00246 [−0.00563, −0.00035]** against **−0.00291 [−0.00711, +0.00081]** on
+all 10 — the same ~0.3% of honest weight either way. The full-10-seed number will
+be requoted once the cells are re-run.
+
+**Fixes.** `MetricsWriter` truncates by default (`append=True` exists for a
+caller that genuinely continues a stream; nothing does). `read_metrics` raises
+`CorruptMetricsError` naming file and line, and **refuses duplicate epochs** —
+the silent half now fails as loudly as the noisy one. `_is_complete` reads the
+metrics, so an already-corrupted sweep re-runs the affected cells by itself.
+`experiments/check_runs.py` reports and optionally deletes corrupt cells.
+
+Nothing is repaired in place. Dropping the bad line still leaves two runs' data
+in one file; the only correct fix is to re-run the cell.
+
+### `gate_split.py`'s verdict was sign-based, and that was wrong
+
+It reported "the gate ATTENUATES" for any paired CI excluding zero. On the clean
+`f = 0.1` subset that fires for a **0.3%** attenuation — true of the arithmetic,
+false of the claim. The verdict now keys on the **fraction of honest weight
+removed** and reports anything under 5% as `NEGLIGIBLE`, separated from zero or
+not.

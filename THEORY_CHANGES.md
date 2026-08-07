@@ -223,3 +223,70 @@ so the guarantee does not rest on the estimate being tight.
 
 This is the third confirmed mechanism result, alongside Prop. 3 and the
 invariance half of Remark 2.
+
+---
+
+## 7. The trust gate works against the adversary it was designed for — and the
+   protection has a compounding cost
+
+Two results from the policy-level arm (60 cells, 10 paired seeds, plain-sum
+aggregation so the gate is the only defence in play).
+
+### 7a. Complete exclusion, and a 300× contrast between threat models
+
+| threat model | `w_ij` byz | `w_ij` honest | honest weight removed |
+|---|---|---|---|
+| **policy**-level, `f = 0.5` | **0.00000** | 0.7077 | **100%** |
+| **policy**-level, `f = 0.2` | **0.00000** | 0.8337 | **100%** |
+| **gradient**-level, `f = 0.1` | 0.8628 | 0.8652 | 0.3% |
+
+The same gate, the same measurement, two adversaries: total exclusion against
+one, nothing against the other. This is the sharpest form of the §5 taxonomy —
+the two threat models are not points on a severity axis, and a single "Byzantine
+tolerance" number that pools them would be meaningless.
+
+Both halves are near-arithmetic given the divergences involved (`D_ij` 3.83 vs
+0.035 on lying edges, `w = exp(-γ[softplus(D-δ) - softplus(-δ)])` with
+`γ = 10.67`). Their value is not that the numbers are surprising; it is that the
+mechanism is demonstrated end-to-end and the scoping claim is now measured
+rather than argued.
+
+### 7b. Excluding neighbours costs consensus among the ones that remain
+
+Not predicted. Honest-edge statistics, same runs:
+
+| | `f = 0` | `f = 0.2` | `f = 0.5` |
+|---|---|---|---|
+| honest `D_ij` | ~0.0074 | 0.0349 | 0.0665 |
+| honest `w_ij` | ~0.957 | 0.834 | 0.708 |
+
+**Honest agents diverge ~9× more at `f = 0.5` than unattacked**, and the gate
+attenuates them too. The loop is direct: excluding a fraction `f` of every
+neighbourhood removes that much consensus pull → the surviving honest agents
+drift apart → their `D_ij` rises → their `w_ij` falls → less pull still.
+
+**The cost of the defence is not the excluded edges; it is the compounding loss
+of consensus among the agents that remain.** Any attenuation-based robustness
+scheme on a communication graph has this exposure, and it is invisible if only
+the excluded edges are reported. Worth a paragraph.
+
+---
+
+## 8. Implementation note: append-mode metrics silently merged two runs
+
+A third entry for §2's collection, and the costliest, because it corrupted
+already-committed results.
+
+The metrics writer opened its JSONL in **append** mode. A cell killed mid-write
+left a partial line; the resume path correctly re-ran the cell, and the re-run
+appended to the dead attempt. The result was one file holding two runs.
+
+The malformed line where they meet is self-announcing. **The duplicate epochs on
+either side are not** — the file parses, and every summary over it averages
+across two runs. Three cells of the completed H6 sweep were affected (59, 56 and
+7 duplicated epochs) and had been analysed without anyone noticing.
+
+**The rule:** a writer for a re-runnable unit of work must truncate, and a reader
+must treat duplicate keys as corruption rather than data. "Append-only" is the
+right shape for a log and the wrong shape for a result. The self-announcing
+failure is a courtesy; design for the silent one.

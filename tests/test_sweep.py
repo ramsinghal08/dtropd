@@ -994,3 +994,67 @@ def test_an_all_stressed_sweep_falls_back_rather_than_failing():
     chosen = _cal_template(plan)
     cfg = next(a for a in plan.arms if a.name == chosen).config(plan.base)
     assert cfg.train.algo == "dtropd" and cfg.stress.active
+
+
+# --------------------------------------------------------------------------- #
+# A resumed cell must not be concatenated onto the attempt it replaced
+# --------------------------------------------------------------------------- #
+
+
+def test_a_rerun_cell_replaces_its_metrics_rather_than_appending(tmp_path):
+    """The bug that corrupted three cells of the completed H6 sweep.
+
+    MetricsWriter opened in append mode. A cell killed mid-write left a partial
+    line; `_is_complete` correctly re-ran it, and the re-run appended to the dead
+    attempt. The malformed line where they met raises, which is how it was
+    found -- but the DUPLICATE EPOCHS on either side do not, and every summary
+    over such a file averages across two runs.
+    """
+    from dtropd.utils import MetricsWriter, read_metrics
+
+    run = tmp_path / "cell"
+    killed = MetricsWriter(run, {"seed": 0})
+    killed.write({"epoch": 0, "v": 1.0})
+    killed._fh.write('{"epoch": 1, "v": 2.')  # killed mid-line
+    killed._fh.flush()
+
+    resumed = MetricsWriter(run, {"seed": 0})
+    for epoch in range(3):
+        resumed.write({"epoch": epoch, "v": 10.0})
+    resumed.close()
+
+    records = read_metrics(run / "metrics.jsonl")
+    assert [r["epoch"] for r in records] == [0, 1, 2]
+    assert all(r["v"] == 10.0 for r in records), "the dead attempt survived the re-run"
+
+
+def test_corrupt_metrics_are_refused_by_name_not_by_traceback(tmp_path):
+    from dtropd.utils import CorruptMetricsError, read_metrics
+
+    torn = tmp_path / "metrics.jsonl"
+    torn.write_text('{"epoch": 0}\n{"epoch": 1, "v": 2.\n{"epoch": 2}\n')
+    with pytest.raises(CorruptMetricsError, match=r"metrics\.jsonl:2 is not valid JSON"):
+        read_metrics(torn)
+
+    doubled = tmp_path / "doubled.jsonl"
+    doubled.write_text('{"epoch": 0}\n{"epoch": 1}\n{"epoch": 0}\n{"epoch": 1}\n')
+    with pytest.raises(CorruptMetricsError, match="DUPLICATE epochs"):
+        read_metrics(doubled)
+    # The silent one is why this check exists: it parses perfectly.
+    assert len(read_metrics(doubled, strict=False)) == 4
+
+
+def test_a_completed_but_corrupt_cell_is_re_run(tmp_path):
+    """Sentinel files alone marked such a cell complete forever: summary.json was
+    written at the end of the SECOND attempt while metrics held both."""
+    from dtropd.sweep import _is_complete
+
+    run = tmp_path / "cell"
+    run.mkdir()
+    (run / "summary.json").write_text("{}")
+    (run / "metadata.json").write_text(json.dumps({"config_fingerprint": "abc"}))
+    (run / "metrics.jsonl").write_text('{"epoch": 0}\n{"epoch": 1}\n')
+    assert _is_complete(run, "abc")
+
+    (run / "metrics.jsonl").write_text('{"epoch": 0}\n{"epoch": 0}\n{"epoch": 1}\n')
+    assert not _is_complete(run, "abc")

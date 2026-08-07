@@ -150,15 +150,27 @@ def pooled(rows: list[dict]) -> dict:
             "paired_diff_ci": bootstrap_ci(diffs),
             "paired_diff_per_seed": diffs,
         }
-    lo = out["w_ij"]["paired_diff_ci"].get("lo")
-    hi = out["w_ij"]["paired_diff_ci"].get("hi")
-    if lo is not None and hi is not None:
-        out["gate_responds"] = bool(hi < 0.0)
-        out["verdict"] = (
-            "the gate ATTENUATES Byzantine edges"
-            if hi < 0.0
-            else "no attenuation: the paired CI on w_ij spans zero or is positive"
-        )
+    # The verdict keys on MAGNITUDE, not just on the sign of a CI. A -0.0025
+    # difference on a base of 0.865 can exclude zero and still be a 0.3%
+    # attenuation -- reporting that as "the gate attenuates" would be true of the
+    # arithmetic and false of the claim. The fraction of the honest weight
+    # removed is the quantity the gate's claim is actually about.
+    w = out["w_ij"]
+    lo, hi = w["paired_diff_ci"].get("lo"), w["paired_diff_ci"].get("hi")
+    if lo is not None and hi is not None and w["honest_mean"] > 0:
+        removed = -w["paired_diff_mean"] / w["honest_mean"]
+        out["fraction_of_weight_removed"] = float(removed)
+        out["separated_from_zero"] = bool(hi < 0.0)
+        if hi >= 0.0:
+            out["verdict"] = "no attenuation: the paired CI on w_ij spans zero"
+        elif removed < 0.05:
+            out["verdict"] = (
+                f"NEGLIGIBLE: {removed:.2%} of the honest weight removed. "
+                "Distinguishable from zero, but not attenuation in any sense the "
+                "gate's claim is about."
+            )
+        else:
+            out["verdict"] = f"the gate ATTENUATES: {removed:.1%} of the honest weight removed"
     return out
 
 

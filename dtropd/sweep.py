@@ -16,10 +16,16 @@ because each of them is a way a comparison can be quietly invalid:
   episodes it happened to see.
 
 Resumability is deliberately dumb: a run is complete iff its ``summary.json``
-exists and its recorded config fingerprint matches what the sweep asked for.
-Killing a sweep and restarting it re-plans everything and skips what is already
-done. There is no partial-epoch resume, and that is a design choice, not an
-omission -- a half-written metrics file is worse than a re-run.
+exists, its recorded config fingerprint matches what the sweep asked for, and
+its metrics file parses without duplicate epochs. Killing a sweep and restarting
+it re-plans everything and skips what is already done. There is no partial-epoch
+resume, and that is a design choice, not an omission -- a half-written metrics
+file is worse than a re-run.
+
+That last clause was aspirational until the writer stopped opening in append
+mode: a killed cell's partial file used to be concatenated with the re-run's,
+producing exactly the half-written file this claims to avoid. The metrics check
+in ``_is_complete`` is what makes an already-corrupted sweep self-healing.
 """
 
 from __future__ import annotations
@@ -50,7 +56,7 @@ from .calibration import (
     env_fingerprint,
 )
 from .config import Config, ConfigError
-from .utils import get_logger, read_metrics
+from .utils import CorruptMetricsError, get_logger, read_metrics
 
 __all__ = [
     "SweepArm",
@@ -448,7 +454,21 @@ def _is_complete(run_dir: Path, fingerprint: str) -> bool:
         recorded = json.loads(meta.read_text()).get("config_fingerprint")
     except json.JSONDecodeError:  # pragma: no cover - a truncated write
         return False
-    return recorded == fingerprint
+    if recorded != fingerprint:
+        return False
+    # A cell can be "finished" and still be unusable: before MetricsWriter
+    # truncated, a killed-then-resumed cell wrote summary.json at the end of the
+    # SECOND attempt while metrics.jsonl held both. Checking only the sentinel
+    # files marks that complete forever. Reading the metrics is what makes the
+    # resume path self-healing.
+    metrics = run_dir / "metrics.jsonl"
+    if metrics.exists():
+        try:
+            read_metrics(metrics)
+        except CorruptMetricsError as exc:
+            logger.warning("re-running %s: %s", run_dir.name, exc)
+            return False
+    return True
 
 
 def _run_cell(job: tuple[Any, int, Any, str, Path, str]) -> dict[str, Any]:
