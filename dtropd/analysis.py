@@ -1,6 +1,6 @@
 """H1-H7 measurements, computed from a stored metrics file.
 
-SPEC Sec. 5, Phase 5 acceptance:
+SPEC Sec. 5 acceptance:
 
     "a single training run produces a metrics file from which every H1-H7
      measurement in Sec. 6 can be computed **without re-running**."
@@ -10,7 +10,7 @@ That is the contract this module implements and
 parsed metrics records (plus, where a hypothesis is inherently a
 *between-run* comparison, several runs) and returns either a value or an
 explicit statement of what is missing. A hypothesis whose measurement cannot be
-computed from the file is a Phase 5 failure, so ``missing`` is a first-class
+computed from the file is a failure, so ``missing`` is a first-class
 outcome rather than an exception.
 
 Single-run vs multi-run: H1-H5 are measurable within one run. H6 and H7 are

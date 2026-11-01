@@ -1,4 +1,4 @@
-"""Phase 7 stressors: Byzantine agents, communication dropout, motor failures.
+"""stressors: Byzantine agents, communication dropout, motor failures.
 
 H6 predicts robust aggregation "degrades gracefully to f ~ 0.4 while plain-sum
 collapses early". Every test here guards one way that prediction could be
@@ -58,7 +58,7 @@ def train_policy(cfg: Config, seed: int = 1, agent: int = 1) -> torch.Tensor:
 
 
 def test_adaptive_attack_stays_inside_the_honest_range():
-    """SPEC Phase 7: "mimics honest gradients from inside the honest range".
+    """SPEC: "mimics honest gradients from inside the honest range".
 
     That phrase is the whole specification of this adversary, and it is testable
     directly: the Byzantine vectors must sit within one honest standard

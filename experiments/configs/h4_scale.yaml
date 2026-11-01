@@ -1,4 +1,4 @@
-# H4 -- the simultaneity penalty grows with N (SPEC Sec. 6, Phase 7).
+# H4 -- the simultaneity penalty grows with N (SPEC Sec. 6, ).
 #
 #   "Measure: per-round `surrogate - realized improvement` across the scale
 #    sweep, densely coupled topology. Confirmed if roughly linear in N."

@@ -48,7 +48,7 @@ distill:
   kl_direction: reverse      # invariant I2 -- the only legal value
   radius_signal: nonstationarity   # invariant I1
   trust_batch: own           # invariant I3
-  aggregation: sum           # robust operators are the Phase 7 arms
+  aggregation: sum           # robust operators are the arms
   neighbor_selection: all    # SPEC Sec. 2.3: the weights do the filtering
 
 graph:

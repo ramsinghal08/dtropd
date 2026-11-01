@@ -1,4 +1,4 @@
-"""Phase 6: the experiment harness, and the D11/D13 guards it enforces.
+""": the experiment harness, and the D11/D13 guards it enforces.
 
 The harness's job is to make a comparison hard to invalidate by accident. Each
 test here corresponds to one way a comparison could quietly become meaningless.

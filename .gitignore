@@ -10,3 +10,4 @@ outputs/
 *.pt
 *.ckpt
 .DS_Store
+phase7.log

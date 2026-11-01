@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 6 acceptance test (SPEC Sec. 5).
+"""acceptance test (SPEC Sec. 5).
 
     "Accept: `python run.py --config experiments/configs/h7.yaml --seeds 10`
      produces the main comparison figure end-to-end."
@@ -7,10 +7,10 @@
 plus the resumability requirement: kill a sweep mid-run and restart it.
 
 **This runs the machinery on the SMOKE sweep, not on H7.** SPEC gates the H7
-experiment at Phase 7, and a "quick look" at this stage is exactly the peek that
+experiment at , and a "quick look" at this stage is exactly the peek that
 biases later interpretation. The code path is identical -- ``run.py sweep``
 against a sweep YAML -- so what is demonstrated here is the harness, which is
-what Phase 6 is for. ``experiments/configs/h7.yaml`` is shipped, validated by
+what is for. ``experiments/configs/h7.yaml`` is shipped, validated by
 the test suite, and deliberately not executed.
 
 Criteria:
@@ -232,7 +232,7 @@ def main(argv: list[str] | None = None) -> int:
     }
 
     report_out = {
-        "acceptance": "Phase 6 -- experiment harness",
+        "acceptance": "-- experiment harness",
         "sweep_config_used": str(SMOKE.relative_to(ROOT)),
         "h7_config_shipped_but_not_run": str(H7.relative_to(ROOT)),
         "criteria": {
@@ -245,7 +245,7 @@ def main(argv: list[str] | None = None) -> int:
         "passed": all(c["passed"] for c in (e1, e2, e3, e4, e5)),
         "not_a_result": (
             "The harness was exercised on the smoke sweep (4 agents, 4 epochs). "
-            "H7 is NOT run here: SPEC gates the experiment at Phase 7, and a "
+            "H7 is NOT run here: SPEC gates the experiment at , and a "
             "preliminary look would bias later interpretation. No hypothesis is "
             "evaluated."
         ),

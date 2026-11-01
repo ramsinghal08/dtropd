@@ -1,7 +1,7 @@
 # IPPO on the heterogeneous environment: a high-friction zone (velocity scaled
 # to 50%) and a masked-observation zone (sensor range 1.5 -> 0.5).
 #
-# This is the H7 IPPO arm; the D-TrOPD arm lands in Phase 3.
+# This is the H7 IPPO arm; the D-TrOPD arm lands in .
 notes: "IPPO / heterogeneous / H7 baseline arm"
 
 env:

@@ -1,4 +1,4 @@
-notes: 'Phase 5 sweep arm: ippo. Calibration PINNED to the shared artifact (SPEC Sec.
+notes: 'sweep arm: ippo. Calibration PINNED to the shared artifact (SPEC Sec.
   11 / D6); no arm re-measures it.'
 env:
   n_agents: 8

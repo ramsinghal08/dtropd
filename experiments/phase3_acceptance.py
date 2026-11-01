@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 3 acceptance test (SPEC Sec. 5).
+"""acceptance test (SPEC Sec. 5).
 
     "Accept (critical): with ``beta = 0``, D-TrOPD reproduces IPPO
      **bitwise-identically** under the same seed. If curves differ at all, the
@@ -176,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
     a3 = check_pytest("tests/test_attenuation.py")
 
     report = {
-        "acceptance": "Phase 3 -- D-TrOPD core",
+        "acceptance": "-- D-TrOPD core",
         "criteria": {
             "A1_beta_zero_reproduces_ippo_bitwise": a1,
             "A2_invariants_I1_to_I9": a2,

@@ -1,6 +1,6 @@
 """D-TrOPD: Decentralized Trust-Region Policy Distillation.
 
-See ``SPEC.md`` for the authoritative algorithm specification.  Module map:
+See ``docs/SPEC.md`` for the authoritative algorithm specification.  Module map:
 
 ``config``      typed dataclass configs + validation (incl. kappa*eta in [1, 3])
 ``env``         cooperative-capture MPE env, heterogeneity zones, stressors

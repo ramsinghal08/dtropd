@@ -27,7 +27,7 @@ cd "$(dirname "$0")/.."
 export WORKERS="${WORKERS:-8}"
 
 echo "=============================================================="
-echo " Phase 7 queue -- H6 (full budget), then H7 (four grid points)"
+echo " queue -- H6 (full budget), then H7 (four grid points)"
 echo " workers: $WORKERS      started: $(date)"
 echo "=============================================================="
 echo
@@ -48,7 +48,7 @@ echo
 
 echo
 echo "=============================================================="
-echo " Phase 7 queue complete: $(date)"
+echo " queue complete: $(date)"
 echo "=============================================================="
 echo
 echo "Next:"

@@ -1,6 +1,6 @@
 """Cross-machine comparison of a training curve against a stored golden reference.
 
-This is the single definition of "does IPPO still behave as it did at Phase 2".
+This is the single definition of "does IPPO still behave as it did at the reference commit".
 It lives in the package rather than in ``tests/`` because two callers need it --
 ``tests/test_baselines.py`` and ``experiments/phase4_acceptance.py`` -- and when
 the rule was written out twice, one copy was fixed and the other was not.
@@ -271,7 +271,7 @@ def compare_curve(
         )
         if not verdict.ok:
             verdict.reason = (
-                f"IPPO's {key} diverged from the Phase 2 reference: {worst:.3g} "
+                f"IPPO's {key} diverged from the reference: {worst:.3g} "
                 f"flipped decisions (steps of {step:.6g}) at epoch "
                 f"{verdict.max_deviation_epoch}, more than the {max_flipped} "
                 f"attributable to round-off tipping a single borderline "
@@ -299,7 +299,7 @@ def compare_curve(
     if verdict.first_epoch_deviation > first_tol:
         verdict.ok = False
         verdict.reason = (
-            f"IPPO's {key} changed since Phase 2 at the FIRST epoch: absolute "
+            f"IPPO's {key} changed since the reference was recorded at the FIRST epoch: absolute "
             f"deviation {verdict.first_epoch_deviation:.3g} exceeds {first_tol:.3g} "
             f"({first_epoch_atol:g} + {first_epoch_range_tol:g} x range {scale:.4g}). "
             f"One update from identical initial weights should not move at this "
@@ -309,7 +309,7 @@ def compare_curve(
     elif verdict.max_deviation > curve_tol:
         verdict.ok = False
         verdict.reason = (
-            f"IPPO's {key} curve diverged from the Phase 2 reference: max absolute "
+            f"IPPO's {key} curve diverged from the reference: max absolute "
             f"deviation {verdict.max_deviation:.3g} at epoch "
             f"{verdict.max_deviation_epoch} exceeds {curve_tol:.3g} "
             f"({curve_atol:g} + {curve_range_tol:g} x range {scale:.4g}).\n"

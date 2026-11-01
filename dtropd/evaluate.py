@@ -149,7 +149,7 @@ def evaluate_random_policy(
     seed: int = 0,
     num_envs: int | None = None,
 ) -> EvalResult:
-    """Uniform-random actions in ``[-1, 1]`` -- the Phase 2 reference point."""
+    """Uniform-random actions in ``[-1, 1]`` -- the reference point."""
     rng = make_rng(seed, "random_policy")
 
     def action_fn(obs: np.ndarray) -> np.ndarray:

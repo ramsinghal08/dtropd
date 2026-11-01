@@ -29,8 +29,8 @@ jobs:
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           # Install from requirements.txt rather than a hand-written list. The
           # list had drifted: it omitted matplotlib, so the only test of SPEC
-          # Sec. 7's "every figure regenerable by one command" -- Phase 6's E3
-          # criterion -- skipped silently on every CI run.
+          # Sec. 7's "every figure regenerable by one command" -- the figure
+          # test -- skipped silently on every CI run.
           pip install -r requirements.txt
 
       - name: CLI smoke

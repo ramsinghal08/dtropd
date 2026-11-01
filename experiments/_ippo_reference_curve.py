@@ -1,4 +1,4 @@
-"""Emit an IPPO learning curve. Runs under both the Phase 2 and current trees."""
+"""Emit an IPPO learning curve. Runs under both the and current trees."""
 import json, sys, os
 sys.path.insert(0, os.getcwd())
 from dtropd.config import Config

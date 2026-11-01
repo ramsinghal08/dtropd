@@ -1,6 +1,6 @@
-"""Measurement helpers for Phase 5.
+"""Measurement helpers for instrumentation.
 
-SPEC Sec. 5 Phase 5's acceptance bar is that a *single* training run's metrics
+SPEC Sec. 5's acceptance bar is that a *single* training run's metrics
 file supports every H1-H7 measurement without re-running. That makes the
 question "what does each hypothesis actually need?" a code question, so the
 answers live here rather than being scattered through the update loop:

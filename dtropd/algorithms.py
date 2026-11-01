@@ -1,13 +1,13 @@
-"""Algorithms: shared base class + IPPO (Phase 2).
+"""Algorithms: shared base class + IPPO.
 
-D-TrOPD (Phase 3), MAPPO / HAPPO / NaiveDistill (Phase 4) subclass
+D-TrOPD, MAPPO / HAPPO / NaiveDistill subclass
 :class:`BaseAlgorithm` and are registered in :data:`ALGORITHMS` as they land.
-Asking for one before it exists raises a clear, phase-tagged error rather than
+Asking for one before it exists raises a clear error rather than
 silently falling back to something else.
 
 The rollout collection, GAE bootstrapping and logging live in the base class,
 so every algorithm consumes byte-identical batches given the same seed.  That
-is what makes the Phase 3 acceptance test ("with beta = 0, D-TrOPD reproduces
+is what makes the acceptance test ("with beta = 0, D-TrOPD reproduces
 IPPO bitwise-identically") a meaningful check of the social path rather than a
 check of the data pipeline.
 """
@@ -354,7 +354,7 @@ class BaseAlgorithm(abc.ABC):
                 i, ac.critic(nxt).cpu().numpy()
             ).reshape(t, k)
 
-    # -- Phase 5 instrumentation shared by every algorithm --------------------- #
+    # -- instrumentation shared by every algorithm --------------------- #
 
     def policy_dispersion(self, probe_size: int = 256) -> np.ndarray:
         """Pairwise policy divergence across the swarm on a shared probe batch.
@@ -562,7 +562,7 @@ class IPPO(BaseAlgorithm):
                 entropy = out["entropy"].mean()
 
                 # SPEC Sec. 2.4: L = L_CLIP - c_V L_V (maximised) -> minimise the
-                # negation. Phase 3 subtracts beta(t) * L_soc here.
+                # negation. D-TrOPD subtracts beta(t) * L_soc here.
                 loss = (
                     policy_loss
                     + cfg.value_coef * value_loss
@@ -674,14 +674,14 @@ class IPPO(BaseAlgorithm):
 
 
 # --------------------------------------------------------------------------- #
-# Phase 4 baselines: MAPPO and HAPPO
+# baselines: MAPPO and HAPPO
 # --------------------------------------------------------------------------- #
 
 
 class MAPPO(IPPO):
     """Multi-Agent PPO: centralised critic, decentralised actors.
 
-    SPEC Sec. 5 Phase 4: "centralized critic over concatenated observations".
+    SPEC Sec. 5: "centralized critic over concatenated observations".
     Every agent keeps its own actor and its own critic *network*, but each
     critic is fed the concatenation of all agents' observations, so it can
     resolve the parts of the return that a local observation cannot.
@@ -711,7 +711,7 @@ class MAPPO(IPPO):
 class HAPPO(IPPO):
     """Heterogeneous-Agent PPO: sequential updates in a random order.
 
-    SPEC Sec. 5 Phase 4: "sequential updates, random order each epoch".
+    SPEC Sec. 5: "sequential updates, random order each epoch".
 
     Agents are updated one at a time in a permutation re-sampled every epoch.
     What makes the sequence sound rather than merely serial is the HAPPO
@@ -730,7 +730,7 @@ class HAPPO(IPPO):
     ``(t, k)`` is the same world transition for every agent, so the factor is a
     well-defined per-sample scalar shared across agents.
 
-    Judgment call (see README): this HAPPO keeps IPPO's **local** critics rather
+    Judgment call (see docs/IMPLEMENTATION_NOTES.md): this HAPPO keeps IPPO's **local** critics rather
     than adopting a centralised one. SPEC describes HAPPO only as "sequential
     updates, random order", and keeping the critic local isolates the
     sequential-update variable -- MAPPO is the arm that varies critic
@@ -939,7 +939,7 @@ class SnapshotDistillBase(IPPO):
         self.epoch_snapshot_bytes = 0
         self.total_snapshot_bytes = 0
 
-        # Phase 7 / H6. A Byzantine neighbour corrupts the gradient it induces,
+        # H6. A Byzantine neighbour corrupts the gradient it induces,
         # so the attack has to be injected where the per-edge gradients exist.
         # With plain-sum aggregation those gradients are never materialised --
         # the loss path handles the whole sum at once -- so an active adversary
@@ -980,17 +980,17 @@ class SnapshotDistillBase(IPPO):
         self._uses_loss_path = d.aggregation == "sum" and not self._corrupts_gradients()
         self._retain_graph = not self._uses_loss_path
 
-        # Communication dropout (Phase 7). Its own stream, so turning dropout on
+        # Communication dropout. Its own stream, so turning dropout on
         # does not shift the Byzantine draw or the environment seeding.
         self._dropout_rng = np.random.default_rng(derive_seed(seed, "comm_dropout"))
         self._epoch_neighbors: list[list[int]] = [list(n) for n in self.neighbors]
 
-        # Per-edge instrumentation state (Phase 5 / H1).
+        # Per-edge instrumentation state.
         self._sign_flips = SignFlipTracker(cfg.instrument.sign_flip_buckets)
         self._edge_rows: list[dict[str, Any]] = []
         self._consensus: dict[str, Any] = {}
 
-    # -- Phase 7 / H6: Byzantine neighbours ------------------------------------ #
+    # -- H6: Byzantine neighbours ------------------------------------ #
 
     def _corrupts_gradients(self) -> bool:
         """Whether an adversary is active *at the aggregation site*."""
@@ -1073,7 +1073,7 @@ class SnapshotDistillBase(IPPO):
         self.total_snapshot_bytes += self.epoch_snapshot_bytes
 
     def _deliver_snapshots(self) -> list[list[int]]:
-        """Which neighbours' snapshots arrived this epoch (Phase 7 dropout).
+        """Which neighbours' snapshots arrived this epoch (dropout).
 
         Dropout is per *ordered* pair, so ``i`` may hear from ``j`` in an epoch
         where ``j`` does not hear from ``i``. A symmetric drop would quietly be a
@@ -1197,7 +1197,7 @@ class SnapshotDistillBase(IPPO):
     def _prepare_epoch(self, agent_idx: int, data: dict[str, Tensor]) -> TeacherBundle:
         return self._teacher_bundle(agent_idx, data)
 
-    # -- Phase 5: per-edge gradients, sign flips, consensus pull ---------------- #
+    # -- per-edge gradients, sign flips, consensus pull ---------------- #
 
     def _edge_gap(self, agent_idx: int, edge: int) -> float:
         """``|D_ij - delta_i|`` for H1's bucketing. NaN where there is no gate.
@@ -1385,7 +1385,7 @@ class SnapshotDistillBase(IPPO):
 class NaiveDistill(SnapshotDistillBase):
     """Distillation from every neighbour with ``w_ij = 1``, structurally.
 
-    SPEC Sec. 5 Phase 4 calls for "D-TrOPD with ``w_ij = 1``", and SPEC Sec. 10
+    SPEC Sec. 5 calls for "D-TrOPD with ``w_ij = 1``", and SPEC Sec. 10
     / D4 requires that this be its own class rather than a D-TrOPD config.
     Accordingly there is **no trust radius, no attenuation, and no code path
     for either** here: :meth:`SnapshotDistillBase._social_terms` returns the
@@ -1848,7 +1848,7 @@ class ForwardKLDistill(DTrOPD):
     instantiate. SPEC Sec. 2.3's rule is that there is exactly one direction
     everywhere in the D-TrOPD code path -- not that the forward direction may
     never be measured. H2 is precisely the experiment that measures it, and
-    SPEC Sec. 5 Phase 4 anticipates it: "forward/switched arms must be separate,
+    SPEC Sec. 5 anticipates it: "forward/switched arms must be separate,
     explicitly named ablation algorithms."
 
     H2 predicts that forward KL inflates the student's entropy: minimising

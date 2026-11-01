@@ -1,6 +1,6 @@
-"""Phase 5: the instrumentation, the calibration artifact, and the analysis.
+"""The instrumentation, the calibration artifact, and the analysis.
 
-The Phase 5 acceptance bar is that ONE run's metrics file supports every H1-H7
+The acceptance bar is that ONE run's metrics file supports every H1-H7
 measurement. These tests hold each half of that: the measurements are actually
 produced, and the analysis can actually consume them.
 """
@@ -70,7 +70,7 @@ def instrumented_config(algo: str = "dtropd", n_agents: int = 5) -> Config:
 
 @pytest.fixture(scope="module")
 def dtropd_run(tmp_path_factory):
-    out = tmp_path_factory.mktemp("phase5") / "dtropd"
+    out = tmp_path_factory.mktemp("dtropd_run") / "dtropd"
     cfg = instrumented_config("dtropd")
     result = train(cfg, seed=0, out_dir=out, progress=False)
     return result.run_dir
@@ -78,7 +78,7 @@ def dtropd_run(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def ippo_run(tmp_path_factory):
-    out = tmp_path_factory.mktemp("phase5c") / "ippo"
+    out = tmp_path_factory.mktemp("ippo_run") / "ippo"
     result = train(instrumented_config("ippo"), seed=0, out_dir=out, progress=False)
     return result.run_dir
 
@@ -343,7 +343,7 @@ def test_ippo_control_also_reports_dispersion(ippo_run):
 
 
 # --------------------------------------------------------------------------- #
-# Phase 5 acceptance: every hypothesis computable from one file
+# Acceptance: every hypothesis computable from one file
 # --------------------------------------------------------------------------- #
 
 

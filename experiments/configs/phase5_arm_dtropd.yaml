@@ -1,4 +1,4 @@
-notes: 'Phase 5 sweep arm: dtropd. Calibration PINNED to the shared artifact (SPEC
+notes: 'sweep arm: dtropd. Calibration PINNED to the shared artifact (SPEC
   Sec. 11 / D6); no arm re-measures it.'
 env:
   n_agents: 8

@@ -1,4 +1,4 @@
-# H6 -- Byzantine tolerance (SPEC Sec. 6, Phase 7).
+# H6 -- Byzantine tolerance (SPEC Sec. 6, ).
 #
 #   "Measure: final return vs Byzantine fraction f in {0,.1,.2,.3,.4,.5},
 #    trimmed-mean vs plain-sum, including the adaptive adversary.

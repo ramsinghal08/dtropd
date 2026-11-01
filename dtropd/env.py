@@ -1,6 +1,6 @@
 """Cooperative-capture MPE environment, heterogeneity zones and stressors.
 
-SPEC Sec. 5, Phase 1: "MPE cooperative navigation wrapper (12 agents, 3
+SPEC Sec. 5: "MPE cooperative navigation wrapper (12 agents, 3
 targets, capture requires >= 3 agents co-located), heterogeneity zones
 (high-friction: 50% velocity; masked-observation: sensor range 1.5 -> 0.5)".
 
@@ -138,7 +138,7 @@ class CooperativeCaptureEnv(_ParallelEnvBase):
         self._dist_min = 2.0 * self.cfg.agent_size
         self._eye = np.eye(self.n_agents, dtype=bool)
 
-        # Stressors (Phase 7 hooks; inert by default).
+        # Stressors (hooks; inert by default).
         self._motor_failure: np.ndarray = np.zeros(self.n_agents, dtype=bool)
 
         self._obs_space: Any = None
@@ -345,7 +345,7 @@ class CooperativeCaptureEnv(_ParallelEnvBase):
         return obs.astype(np.float32)
 
     def state(self) -> np.ndarray:
-        """Global state for centralised critics (MAPPO, Phase 4)."""
+        """Global state for centralised critics (MAPPO)."""
         return np.concatenate(
             [
                 self.agent_pos.ravel(),
@@ -475,7 +475,7 @@ class CooperativeCaptureEnv(_ParallelEnvBase):
         }
         return rewards, info
 
-    # -- stressors (Phase 7 hooks) ------------------------------------------ #
+    # -- stressors (hooks) ------------------------------------------ #
 
     def set_motor_failure(self, agent_indices: Iterable[int]) -> None:
         """Zero the actuation of the given agents until cleared."""
@@ -488,7 +488,7 @@ class CooperativeCaptureEnv(_ParallelEnvBase):
 
     # -- misc ---------------------------------------------------------------- #
 
-    def render(self) -> None:  # pragma: no cover - no renderer in Phase 1
+    def render(self) -> None:  # pragma: no cover - no renderer
         raise NotImplementedError("rendering is not implemented")
 
     def close(self) -> None:
@@ -536,7 +536,7 @@ class SyncVectorEnv:
         self.num_envs = int(num_envs)
         self.autoreset = autoreset
         self.envs = [CooperativeCaptureEnv(cfg, seed=seed + 1000 * i) for i in range(self.num_envs)]
-        # Phase 7 stressor: dead actuators. Applied to every copy so the failed
+        # stressor: dead actuators. Applied to every copy so the failed
         # set is a property of the run, not of one environment instance.
         self.motor_failures = sorted(motor_failures or [])
         if self.motor_failures:

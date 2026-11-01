@@ -1,9 +1,9 @@
-# Phase 5: a fully-instrumented single run.
+# : a fully-instrumented single run.
 #
 # The acceptance bar is that ONE run's metrics file supports every H1-H7
 # measurement without re-running, so every instrument is on. Small enough to
 # finish on a laptop CPU; the instrumentation, not the scale, is the point.
-notes: "Phase 5 instrumentation demonstration"
+notes: "instrumentation demonstration"
 
 env:
   n_agents: 8

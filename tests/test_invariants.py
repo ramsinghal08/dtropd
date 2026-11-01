@@ -1,6 +1,6 @@
 """SPEC Sec. 3 invariants I1-I9 as executable checks.
 
-All nine bind as of Phase 3.  The social-path invariants (I1, I3's trust-batch
+All nine bind as of .  The social-path invariants (I1, I3's trust-batch
 half, I5's distillation half, I6, I7, I8) are checked against the live
 :class:`~dtropd.algorithms.DTrOPD` update, not against config defaults: a
 config field nothing reads is not a guarantee.
@@ -160,7 +160,7 @@ def test_i2_no_forward_kl_branch_in_the_package():
     """No forward-KL *fallback*: no code path may CHOOSE a direction at runtime.
 
     This replaced a blanket source scan for the token ``forward_kl``. That scan
-    forbade the very thing SPEC prescribes -- Sec. 5 Phase 4 requires forward and
+    forbade the very thing SPEC prescribes -- Sec. 5 requires forward and
     switched arms to exist as "separate, explicitly named ablation algorithms",
     which H2 needs -- so it contradicted the spec it was protecting.
 

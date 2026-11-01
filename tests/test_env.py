@@ -1,4 +1,4 @@
-"""Phase 1 acceptance (env half): shapes, reward accounting, zones, physics.
+"""Acceptance (env half): shapes, reward accounting, zones, physics.
 
 "Env passes a random-policy rollout with correct shapes and reward accounting."
 """

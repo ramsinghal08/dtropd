@@ -1,4 +1,4 @@
-"""Phase 0/2 smoke tests: the CPU debug path always works (SPEC Sec. 9, rule 6)."""
+"""Smoke tests: the CPU debug path always works (SPEC Sec. 9)."""
 
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ def test_two_agent_200_step_cpu_run_completes(tmp_path):
 
 
 def test_run_py_help_exits_zero():
-    """Phase 0 acceptance: ``python run.py --help`` works."""
+    """acceptance: ``python run.py --help`` works."""
     proc = subprocess.run(
         [sys.executable, str(ROOT / "run.py"), "--help"],
         capture_output=True,

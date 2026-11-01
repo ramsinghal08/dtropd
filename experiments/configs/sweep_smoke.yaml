@@ -1,11 +1,11 @@
-# Smoke sweep: exercises the ENTIRE Phase 6 harness (guards, resume, report,
+# Smoke sweep: exercises the ENTIRE harness (guards, resume, report,
 # figure) at a scale that finishes in under a minute on a laptop CPU.
 #
 # SPEC Sec. 9 rule 6 in sweep form: the machinery must be debuggable without a
-# GPU-hours experiment. This is what the Phase 6 acceptance runs; h7.yaml is
-# the real thing and is deliberately NOT run until Phase 7.
+# GPU-hours experiment. This is what the acceptance runs; h7.yaml is
+# the real thing and is deliberately NOT run until .
 name: sweep_smoke
-notes: "Phase 6 machinery test. NOT an experiment: 4 agents, 4 epochs, 2 seeds."
+notes: "machinery test. NOT an experiment: 4 agents, 4 epochs, 2 seeds."
 out_dir: runs/sweep_smoke
 seeds: [0, 1]
 
