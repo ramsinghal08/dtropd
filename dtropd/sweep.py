@@ -1,6 +1,6 @@
-"""Phase 6: the config-driven multi-seed experiment harness.
+"""The config-driven multi-seed experiment harness.
 
-SPEC Sec. 5 Phase 6 asks for a launcher, resumable checkpoints, rliable-style
+SPEC Sec. 5 asks for a launcher, resumable checkpoints, rliable-style
 plotting, and a paired-seed comparison mode, with every figure regenerable from
 stored metrics by one command.
 
@@ -142,7 +142,7 @@ class SweepPlan:
     #: sweep starts, then pin it for every arm in that environment. This is the
     #: D6 workflow, not an exception to it: what D6 forbids is arms calibrating
     #: *separately*, and a sweep-level derive-once-then-pin is exactly the
-    #: guarantee it asks for -- while keeping the Phase 6 acceptance a single
+    #: guarantee it asks for -- while keeping the acceptance a single
     #: command. Set false to require the artifacts to pre-exist.
     auto_calibrate: bool = True
 

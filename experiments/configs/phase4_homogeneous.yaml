@@ -1,6 +1,6 @@
-# Phase 4 acceptance: ONE config, shared by every algorithm.
+# acceptance: ONE config, shared by every algorithm.
 #
-# SPEC Sec. 5 Phase 4 requires all baselines to train "with shared
+# SPEC Sec. 5 requires all baselines to train "with shared
 # hyperparameters and identical seeds". Rather than trusting five near-identical
 # YAML files to stay in sync, the acceptance harness runs this single file and
 # overrides only `train.algo` (and `distill.enabled`, which is structural: the
@@ -8,9 +8,9 @@
 # therefore shared by construction, not by inspection.
 #
 # SPEC Sec. 9 rule 5 / fair-tuning: no per-algorithm tuning has been performed.
-# The values below are the Phase 2 IPPO settings, adopted unchanged by MAPPO,
+# The values below are the IPPO settings, adopted unchanged by MAPPO,
 # HAPPO, NaiveDistill and D-TrOPD.
-notes: "Phase 4 baselines / homogeneous / shared hyperparameters"
+notes: "baselines / homogeneous / shared hyperparameters"
 
 env:
   n_agents: 12

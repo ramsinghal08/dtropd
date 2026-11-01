@@ -5,13 +5,13 @@ paper's claims. Each entry states what was measured, on what data, and what
 follows for the text. Dated 2026-08-06 unless noted.
 
 Nothing here is a result of a hypothesis test unless it says so. Several entries
-record hypotheses that were **refuted**, including three of mine.
+record hypotheses that were **refuted**, including three early working hypotheses.
 
 ---
 
 ## 1. The "social term is immaterial" hypothesis — TESTED AND REFUTED
 
-I proposed, three times and with increasing confidence, that H6's flat curve,
+It was proposed repeatedly that H6's flat curve,
 H1's null and a likely H7 null had one common cause: that `beta_max = 0.05`
 makes the distillation term a rounding error next to the policy gradient. It
 does not. Measured on the calibrated D-TrOPD heterogeneous H6 cell
@@ -554,7 +554,7 @@ refutation. **The mechanisms are right and the composite loses**, and that
 sentence is only available because every mechanism was measured separately
 instead of being inferred from the headline.
 
-Three of the refuted things were mine, one was a premise of the paper's own
+Three of the refuted things were early working hypotheses, one was a premise of the paper's own
 Remark 2, and one was an experiment scoped to the wrong threat model. Each is
 recorded with the measurement that killed it. A programme that reported only
 what worked would have had less to say and more to defend.

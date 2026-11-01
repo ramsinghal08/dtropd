@@ -30,7 +30,7 @@ prints every point whatever they say.
 **The D9 consensus-pull cost is reported alongside (SPEC Sec. 11 / D9)** -- the
 homogeneous-environment cost of distillation, which is the floor the
 heterogeneous benefit has to clear. It is reported SEPARATELY from return and
-never as a proxy for it: THEORY_CHANGES §12 measured a 26% swing in honest
+never as a proxy for it: docs/THEORY_NOTES.md §12 measured a 26% swing in honest
 consensus weight with zero detectable effect on return.
 
 Usage

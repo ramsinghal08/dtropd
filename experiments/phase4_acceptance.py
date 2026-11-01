@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 4 acceptance test (SPEC Sec. 5).
+"""acceptance test (SPEC Sec. 5).
 
     "Accept: all four baselines train end-to-end on the homogeneous env with
      shared hyperparameters and identical seeds."
@@ -19,10 +19,10 @@ Criteria:
       that claim is auditable;
   B3  identical seeds give identical initial policies across algorithms, so the
       comparison is not confounded before the first update;
-  B4  IPPO's learning curve matches ``tests/data/ippo_phase2_reference.json``,
-      which was generated on the pre-refactor Phase 2 commit.
+  B4  IPPO's learning curve matches ``tests/data/ippo_reference.json``,
+      which was generated on the pre-refactor reference commit.
 
-This does **not** run H7 or any headline comparison: SPEC gates that at Phase 5.
+This does **not** run H7 or any headline comparison: SPEC gates that at .
 Returns are reported only to show that training happened, and are explicitly
 not a result.
 
@@ -145,11 +145,11 @@ def check_identical_init(base: Config, seed: int) -> dict[str, Any]:
 
 
 def check_ippo_regression() -> dict[str, Any]:
-    """B4: IPPO's curve still matches the pre-refactor Phase 2 reference."""
+    """B4: IPPO's curve still matches the pre-refactor reference."""
     from dtropd.env import SyncVectorEnv
     from dtropd.utils import derive_seed
 
-    path = ROOT / "tests" / "data" / "ippo_phase2_reference.json"
+    path = ROOT / "tests" / "data" / "ippo_reference.json"
     reference = json.loads(path.read_text())
     spec = reference["config_summary"]
 
@@ -192,7 +192,7 @@ def check_ippo_regression() -> dict[str, Any]:
     mismatches = {k: v.as_dict() for k, v in verdicts.items() if not v.ok}
     return {
         "reference": str(path.relative_to(ROOT)),
-        "generated_on_commit": "011de8f (Phase 2, pre-refactor)",
+        "generated_on_commit": "011de8f (, pre-refactor)",
         "metrics_compared": sorted(reference["curve"]),
         "deviation_units": (
             "absolute; for count-valued metrics, flipped threshold decisions"
@@ -222,7 +222,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.epochs is not None:
         base.train.total_epochs = args.epochs
     base.validate(emit=False)
-    assert not base.env.heterogeneous, "Phase 4 acceptance is defined on the homogeneous env"
+    assert not base.env.heterogeneous, "acceptance is defined on the homogeneous env"
 
     b2 = check_shared_hyperparameters(base)
     b3 = check_identical_init(base, args.seeds[0])
@@ -262,7 +262,7 @@ def main(argv: list[str] | None = None) -> int:
     }
 
     report = {
-        "acceptance": "Phase 4 -- baselines",
+        "acceptance": "-- baselines",
         "config": args.config,
         "seeds": args.seeds,
         "criteria": {
@@ -275,14 +275,14 @@ def main(argv: list[str] | None = None) -> int:
         "per_algorithm": per_algo,
         "tuning_statement": (
             "No hyperparameter search was performed for any algorithm. Every "
-            "algorithm uses the Phase 2 IPPO settings unchanged, from one shared "
+            "algorithm uses the IPPO settings unchanged, from one shared "
             "config file (SPEC Sec. 9 rule 5)."
         ),
         "not_a_result": (
             "Returns are reported to show that training happened. This is the "
             "homogeneous environment with 3 seeds; SPEC Sec. 7 requires >= 10 "
             "seeds with paired seeds and bootstrap CIs, and H7 is gated at "
-            "Phase 5. Nothing here is a comparison between algorithms."
+            ". Nothing here is a comparison between algorithms."
         ),
     }
     out = Path(args.out)

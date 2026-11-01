@@ -132,7 +132,7 @@ def test_shipped_experiment_configs_validate():
     """Every shipped YAML validates under the schema it belongs to.
 
     Two schemas live in this directory: single-run configs (a `Config`) and
-    Phase 6 sweep configs (a base config plus arms). They are routed by the
+    sweep configs (a base config plus arms). They are routed by the
     presence of an `arms` key rather than by filename, so a new file cannot
     dodge validation by being named unexpectedly.
     """

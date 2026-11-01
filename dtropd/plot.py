@@ -1,8 +1,8 @@
 """Figures from stored metrics.
 
 SPEC Sec. 7: "Every figure regenerable from stored metrics by one command, no
-manual steps."  Phase 6 adds the ``rliable`` IQM / bootstrap-CI comparison
-figures; what exists today is the learning-curve plot used to eyeball Phase 2
+manual steps."  The sweep harness adds the ``rliable`` IQM / bootstrap-CI comparison
+figures; this module also provides the learning-curve plot for individual
 runs, driven entirely by ``metrics.jsonl`` files on disk.
 
 ``matplotlib`` is imported lazily so that the core package stays importable in
@@ -94,7 +94,7 @@ def plot_learning_curves(
 
 
 # --------------------------------------------------------------------------- #
-# The main comparison figure (SPEC Sec. 5 Phase 6, Sec. 7)
+# The main comparison figure (SPEC Sec. 5, Sec. 7)
 # --------------------------------------------------------------------------- #
 
 

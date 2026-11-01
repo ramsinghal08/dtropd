@@ -1,6 +1,6 @@
-"""Phase 1 acceptance: analytic Gaussian KL vs a 1e6-sample Monte Carlo estimate.
+"""Acceptance: analytic Gaussian KL vs a 1e6-sample Monte Carlo estimate.
 
-SPEC Sec. 2.5 / Sec. 5 Phase 1: "analytic Gaussian KL matches a 1e6-sample
+SPEC Sec. 2.5 / Sec. 5 : "analytic Gaussian KL matches a 1e6-sample
 Monte Carlo estimate within 1%".
 
 The tanh-invariance test is the part that licenses computing the KL on the

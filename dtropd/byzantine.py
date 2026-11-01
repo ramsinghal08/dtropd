@@ -1,4 +1,4 @@
-"""Byzantine adversaries (SPEC Sec. 5 Phase 7, H6).
+"""Byzantine adversaries (SPEC Sec. 5, H6).
 
 :mod:`dtropd.robust` holds the *defences* -- trimmed mean, geometric median,
 Krum. This module holds the *attacks* they are defended against, kept separate

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compute every H1-H7 measurement from ONE run's metrics file.
 
-This script *is* the Phase 5 acceptance demonstration (SPEC Sec. 5):
+This script *is* the acceptance demonstration (SPEC Sec. 5):
 
     "a single training run produces a metrics file from which every H1-H7
      measurement in Sec. 6 can be computed without re-running."
@@ -9,7 +9,7 @@ This script *is* the Phase 5 acceptance demonstration (SPEC Sec. 5):
 It reads `metrics.jsonl` + `metadata.json` from a single run directory and emits
 a value for each of H1-H7, or an explicit list of the fields that were missing.
 It exits non-zero if any hypothesis is not computable, because "we'll add that
-logging later" is exactly the failure mode Phase 5 exists to prevent.
+logging later" is exactly the failure mode exists to prevent.
 
 H6 and H7 are comparisons across runs by construction (Byzantine fraction,
 algorithm x environment). For those, "computable" means the *per-run* quantity
@@ -95,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(report, indent=2, default=str))
 
     width = max(len(results[k].title) for k in HYPOTHESES)
-    print("\n--- Phase 5: can every hypothesis be measured from this one file? ---")
+    print("\n--- : can every hypothesis be measured from this one file? ---")
     for key in HYPOTHESES:
         r = results[key]
         mark = "OK  " if r.computable else "MISS"

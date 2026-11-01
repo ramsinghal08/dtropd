@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 5 acceptance test (SPEC Sec. 5).
+"""acceptance test (SPEC Sec. 5).
 
     "Accept: a single training run produces a metrics file from which every
      H1-H7 measurement in Sec. 6 can be computed without re-running."
@@ -12,7 +12,7 @@ Criteria:
   C1  the run completes and writes metrics.jsonl + metadata.json, with the
       metrics schema version and reward spec version stamped;
   C2  every H1-H7 measurement is computable from that one file -- a hypothesis
-      that is not is a Phase 5 failure, not a Phase 6 problem;
+      that is not is a failure, not a problem;
   C3  the D6 calibration artifact is emitted, self-consistent, and records the
       window, the pooled epochs, the edge count and the quantile table;
   C4  the shared-calibration check refuses a sweep whose arms were calibrated
@@ -188,7 +188,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     report = {
-        "acceptance": "Phase 5 -- instrumentation",
+        "acceptance": "-- instrumentation",
         "config": args.config,
         "criteria": {
             "C1_run_and_schema": c1,
@@ -202,7 +202,7 @@ def main(argv: list[str] | None = None) -> int:
         ),
         "not_a_result": (
             "This runs one seed to demonstrate measurability. No hypothesis is "
-            "evaluated here; H7 and the multi-seed sweeps are gated at Phase 6."
+            "evaluated here; H7 and the multi-seed sweeps are gated at ."
         ),
     }
     out.mkdir(parents=True, exist_ok=True)

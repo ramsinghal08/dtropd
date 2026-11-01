@@ -6,13 +6,13 @@ Implement **D-TrOPD** (Decentralized Trust-Region Policy Distillation) for netwo
 
 Each agent runs PPO locally and additionally distills from neighbors, but *gates* how much it imports from each neighbor by a trust weight based on behavioral divergence. There is no central critic and no sequential update order.
 
-**A previous prototype of this project failed** because it implemented a superseded design. Section 3 lists the exact corrections. Treat those as hard invariants: if any code path violates one, that is a bug regardless of whether results look good.
+Section 3 lists invariants that every code path must satisfy. A violation is a bug regardless of whether results look good.
 
-**Target hardware:** development on a laptop GPU (GTX 1650, 4 GB VRAM); full runs on Google Colab T4 (15 GB). Everything must run CPU-only for smoke tests and scale to a single GPU for real runs. No multi-GPU, no cluster assumptions.
+**Target hardware:** development on a laptop GPU (4 GB VRAM); full runs on a single 15 GB GPU. Everything runs CPU-only for smoke tests and scales to a single GPU for real runs. There are no multi-GPU or cluster assumptions.
 
 ---
 
-## 2. Algorithm specification (authoritative — implement exactly this)
+## 2. Algorithm specification
 
 Agents `i ∈ V = {1..N}` on an undirected graph `G`, neighborhood `N_i`. Each agent has a tanh-squashed diagonal-Gaussian policy `π_i(a|o; θ_i)` and its own local critic `V_i`.
 
@@ -76,9 +76,9 @@ When enabled, aggregate per-neighbor distillation gradients `g_ij = ∇_θi KL(�
 
 ---
 
-## 3. Non-negotiable invariants (the prototype violated all of these)
+## 3. Invariants
 
-Encode each as a runtime assertion or an automated test. Failing any one invalidates the run.
+Each is enforced as a runtime assertion or an automated test. Failing any one invalidates the run.
 
 | # | Invariant | Why |
 |---|-----------|-----|
@@ -125,9 +125,9 @@ README.md
 
 ---
 
-## 5. Build order — phased, each with an acceptance test
+## 5. Components and acceptance criteria
 
-**Do not proceed past a failing acceptance test.** Report results and stop.
+The implementation is organised into stages, each with an acceptance test.
 
 ### Phase 0 — Skeleton
 Repo structure, configs, seeding, logging, CI-runnable pytest.
@@ -215,27 +215,25 @@ Each needs a config and an analysis function. **Report verdicts honestly — "re
 
 ---
 
-## 8. Watchlist — regressions from the failed prototype
+## 8. Diagnostics
 
-If any of these appear, an old bug has returned:
+Symptoms that indicate a regression:
 
-- Sudden per-agent entropy blow-ups → a forward-KL path leaked back in (violates I2).
-- Trust radius *growing* as training destabilizes → value-variance radius leaked back in (violates I1).
-- Same neighbor oscillating in/out across consecutive epochs → selection churn; confirm all-neighbor default is active.
-- Trust scores disagreeing between pooled-batch and own-rollout evaluation → pooled path is live (violates I3). Own-rollout is authoritative.
-- D-TrOPD tracking IPPO during warmup then degrading once β reaches full strength → **do not dismiss this.** It was observed in preliminary prototype runs. Check I1–I9 first, then treat it as a real empirical finding requiring multi-seed GPU confirmation.
+- Sudden per-agent entropy blow-ups: a forward-KL path has leaked back in (violates I2).
+- Trust radius growing as training destabilises: a value-variance radius has leaked back in (violates I1).
+- The same neighbour oscillating in and out across consecutive epochs: selection churn; confirm the all-neighbour default is active.
+- Trust scores disagreeing between pooled-batch and own-rollout evaluation: a pooled path is live (violates I3). Own-rollout is authoritative.
+- D-TrOPD tracking IPPO during warmup and degrading once beta reaches full strength: check I1 to I9 first, then treat it as an empirical finding requiring multi-seed confirmation.
 
 ---
 
-## 9. Rules of engagement
+## 9. Methodology
 
-1. **One phase at a time.** Stop at each acceptance test, report the result, wait for approval.
-2. **Tests before features** for anything touching Sec. 2 math.
-3. **Ask, don't assume.** If this spec is ambiguous, ask rather than picking a plausible default — the prototype failed on exactly this kind of silent choice.
-4. **Never soften an invariant to make a test pass.** If an invariant seems to make something impossible, say so and stop.
-5. **No hidden hyperparameter tuning** of D-TrOPD without equal tuning of baselines. Unfair comparisons are worse than no comparisons.
-6. **CPU smoke path always works:** every feature must be runnable in a <2-minute 2-agent CPU config for debugging.
-7. Commit per phase with a message naming the phase and its acceptance result.
+1. Tests precede features for anything touching the math in Sec. 2.
+2. No invariant is relaxed to make a test pass.
+3. No hyperparameter tuning of D-TrOPD without equal tuning of the baselines.
+4. Every feature is runnable in a two-minute, 2-agent CPU configuration.
+5. Each stage is committed with its acceptance result.
 
 ---
 
@@ -1321,7 +1319,7 @@ ratio above). But the healthy `valvar` radius is still numerically negligible at
 calibration window whose maximum was 3.27. **`Var(V)` grew 6.3× beyond the window
 `kappa` was derived on.**
 
-This sharpens Remark 2 again (THEORY_CHANGES §4). The value-variance radius does
+This sharpens Remark 2 again (THEORY_NOTES §4). The value-variance radius does
 not merely need re-tuning across *reward scales*; it needs re-tuning across
 **training time**, because the magnitude of `Var(V)` is itself non-stationary. A
 KL-valued signal has no such problem — it is dimensionless *and* its scale does
@@ -1351,7 +1349,7 @@ Recorded here rather than decided when the numbers land.
    answer.
 3. **≥10 seeds, paired, identical environment instances** for D-TrOPD vs IPPO.
 4. **The D9 consensus-pull cost appears in the H7 table**, separately from
-   return and never as a proxy for it — THEORY_CHANGES §12 measured a 26% swing
+   return and never as a proxy for it — THEORY_NOTES §12 measured a 26% swing
    in honest consensus weight with zero detectable effect on return.
 5. **H7 uses final return as its outcome variable**, and is the one hypothesis
    for which that is correct (`RETURN_IS_THE_OUTCOME = ("h7",)`).

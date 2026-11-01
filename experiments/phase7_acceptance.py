@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 7 acceptance test (SPEC Sec. 5).
+"""acceptance test (SPEC Sec. 5).
 
     "Byzantine agents (including an **adaptive** adversary that mimics honest
      gradients from inside the honest range), robust aggregators, communication
@@ -310,7 +310,7 @@ def main(argv: list[str] | None = None) -> int:
     }
 
     report = {
-        "acceptance": "Phase 7 -- robustness + scale",
+        "acceptance": "-- robustness + scale",
         "criteria": {
             "F1_stressors_bite": f1,
             "F2_adaptive_adversary_is_adaptive": f2,

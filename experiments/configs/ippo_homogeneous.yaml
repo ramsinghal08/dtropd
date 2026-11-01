@@ -1,9 +1,9 @@
-# Phase 2 acceptance configuration: IPPO on the homogeneous cooperative-capture
+# acceptance configuration: IPPO on the homogeneous cooperative-capture
 # environment (12 agents, 3 targets, capture requires 3 co-located agents).
 #
-# Acceptance (SPEC Sec. 5, Phase 2): mean return over 3 seeds beats a random
+# Acceptance (SPEC Sec. 5): mean return over 3 seeds beats a random
 # policy by a clear margin, and critic explained variance rises above 0.3.
-notes: "IPPO / homogeneous / Phase 2 acceptance"
+notes: "IPPO / homogeneous / acceptance"
 
 env:
   n_agents: 12

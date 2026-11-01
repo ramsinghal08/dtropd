@@ -1,7 +1,7 @@
-"""Phase 3 acceptance: beta = 0 must reproduce IPPO bitwise, and every
+"""Acceptance: beta = 0 must reproduce IPPO bitwise, and every
 ``DistillConfig`` switch must be *honoured*, not merely present.
 
-SPEC Sec. 5, Phase 3 acceptance (critical): "with ``beta = 0``, D-TrOPD
+SPEC Sec. 5 acceptance (critical): "with ``beta = 0``, D-TrOPD
 reproduces IPPO **bitwise-identically** under the same seed. If curves differ
 at all, the social path is leaking."
 
@@ -69,7 +69,7 @@ def flat_params(algo) -> list[torch.Tensor]:
 
 
 # --------------------------------------------------------------------------- #
-# THE Phase 3 acceptance test
+# The central acceptance test
 # --------------------------------------------------------------------------- #
 
 

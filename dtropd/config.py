@@ -3,7 +3,7 @@
 Every knob in the project lives here.  There are no dictionaries of magic
 strings anywhere else in the codebase; algorithms receive typed config objects.
 
-Validation encodes the parts of SPEC.md Sec. 2 that are checkable statically:
+Validation encodes the parts of docs/SPEC.md Sec. 2 that are checkable statically:
 
 * ``kappa * eta in [1, 3]``               (SPEC Sec. 2.2)
 * KL direction is always ``"reverse"``    (SPEC Sec. 2.3 / invariant I2)
@@ -68,7 +68,7 @@ class Zone:
 
 @dataclass
 class EnvConfig:
-    """Cooperative-capture MPE environment (SPEC Sec. 5, Phase 1).
+    """Cooperative-capture MPE environment (SPEC Sec. 5).
 
     12 agents, 3 targets, a target counts as captured only when at least
     ``capture_group_size`` agents are simultaneously inside ``capture_radius``.
@@ -103,7 +103,7 @@ class EnvConfig:
     sensor_range: float = 1.5
     masked_sensor_range: float = 0.5
 
-    # --- heterogeneity zones (SPEC Sec. 5, Phase 1) ------------------------
+    # --- heterogeneity zones (SPEC Sec. 5) ------------------------
     heterogeneous: bool = False
     friction_velocity_scale: float = 0.5
     friction_zones: list[Zone] = field(
@@ -301,7 +301,7 @@ class PPOConfig:
 
 
 # --------------------------------------------------------------------------- #
-# Distillation (D-TrOPD -- Phase 3; declared here so configs validate today)
+# Distillation (D-TrOPD)
 # --------------------------------------------------------------------------- #
 
 
@@ -309,9 +309,9 @@ class PPOConfig:
 class DistillConfig:
     """Social distillation knobs (SPEC Sec. 2.2, 2.3, 2.6).
 
-    Consumed by the D-TrOPD algorithm in Phase 3.  The fields exist now so that
-    the kappa*eta validation demanded by Phase 0 has something to validate and
-    so that experiment configs are stable across phases.
+    Consumed by the D-TrOPD algorithm.  The fields exist so that
+    the kappa*eta validation has something to validate and
+    so that experiment configs remain stable.
     """
 
     enabled: bool = False
@@ -531,13 +531,13 @@ class DistillConfig:
 
 
 # --------------------------------------------------------------------------- #
-# Instrumentation (Phase 5)
+# Instrumentation
 # --------------------------------------------------------------------------- #
 
 
 @dataclass
 class InstrumentConfig:
-    """What gets logged, and how often (SPEC Sec. 5 Phase 5).
+    """What gets logged, and how often (SPEC Sec. 5).
 
     The acceptance bar is that a *single* training run's metrics file supports
     every H1-H7 measurement without re-running, so these default to on. The
@@ -621,9 +621,9 @@ class InstrumentConfig:
 
 @dataclass
 class StressConfig:
-    """Phase 7 stressors: Byzantine agents, dropout, motor failures.
+    """Stressors: Byzantine agents, dropout, motor failures.
 
-    SPEC Sec. 5 Phase 7 and H6. All default to *off*, so an unconfigured run is
+    SPEC Sec. 5 and H6. All default to *off*, so an unconfigured run is
     the unstressed baseline and `f = 0` is a real cell of the H6 sweep rather
     than a separate code path.
 
@@ -644,7 +644,7 @@ class StressConfig:
     #: sign_flip -- negate the honest gradient; loud, caught by most defences
     #: gaussian  -- large isotropic noise; the classic "obvious" attack
     #: adaptive  -- stay inside the honest range and bias the consensus (SPEC
-    #:              Phase 7's "mimics honest gradients from inside the honest
+    #:              "mimics honest gradients from inside the honest
     #:              range"). Perturbs by a fraction of the honest coordinate-wise
     #:              spread, chosen to survive trimming.
     byzantine_mode: str = "none"

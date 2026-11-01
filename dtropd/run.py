@@ -125,7 +125,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_analyze.add_argument("--out", default=None)
 
     p_sweepr = sub.add_parser(
-        "sweep", help="run a multi-seed sweep and emit the comparison figure (Phase 6)"
+        "sweep", help="run a multi-seed sweep and emit the comparison figure"
     )
     p_sweepr.add_argument("--config", required=True, help="a sweep YAML")
     p_sweepr.add_argument(
@@ -264,7 +264,7 @@ def _cmd_validate(args: argparse.Namespace) -> int:
 
 
 def _cmd_sweep(args: argparse.Namespace) -> int:
-    """SPEC Sec. 5 Phase 6: one command, from scratch, to the comparison figure."""
+    """SPEC Sec. 5: one command, from scratch, to the comparison figure."""
     from .plot import plot_comparison
     from .sweep import SweepError, build_plan, run_sweep, sweep_report
 

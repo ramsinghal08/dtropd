@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 2 acceptance test (SPEC Sec. 5).
+"""acceptance test (SPEC Sec. 5).
 
     "IPPO learns on the *homogeneous* env -- mean return over 3 seeds beats a
      random policy by a clear margin, and critic explained variance rises
@@ -81,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.epochs is not None:
         cfg.train.total_epochs = args.epochs
     cfg.validate(emit=False)
-    assert not cfg.env.heterogeneous, "Phase 2 acceptance is defined on the homogeneous env"
+    assert not cfg.env.heterogeneous, "acceptance is defined on the homogeneous env"
 
     payloads = [(cfg.to_dict(), seed, args.out) for seed in args.seeds]
     if args.workers > 1:
@@ -101,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
     c3 = all(r["max_explained_variance"] > args.ev_threshold for r in rows)
 
     report = {
-        "acceptance": "Phase 2 -- IPPO learns on the homogeneous env",
+        "acceptance": "-- IPPO learns on the homogeneous env",
         "config": args.config,
         "seeds": args.seeds,
         "criteria": {

@@ -4,7 +4,7 @@ SPEC Sec. 2.3::
 
     w_ij = exp( -gamma * [ softplus(D_ij - delta_i) - softplus(-delta_i) ] )
 
-Phase 3 acceptance: "test_attenuation.py confirms w(0)=1 and derivative
+Acceptance: "test_attenuation.py confirms w(0)=1 and derivative
 continuity at D = delta".
 """
 

@@ -5,9 +5,9 @@ Pure tensor functions over a stack of per-neighbour gradient vectors of shape
 D-TrOPD update wires them in behind ``DistillConfig.aggregation`` (default
 ``"sum"``, i.e. the plain weighted sum of SPEC Sec. 2.3).
 
-Provided here in Phase 0 because they are part of the declared repository
+Provided here because they are part of the declared repository
 structure and are pure numerics with no coupling to the algorithm; they are
-*exercised* by the Phase 7 robustness experiments.
+*exercised* by the robustness experiments.
 """
 
 from __future__ import annotations
